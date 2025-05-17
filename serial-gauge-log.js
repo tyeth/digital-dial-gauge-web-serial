@@ -2,15 +2,31 @@
 // Node.js script to read and parse digital dial gauge data from a serial port
 // Usage: node serial-gauge-log.js /dev/ttyUSB0
 
+
 const SerialPort = require('serialport');
 const Readline = require('@serialport/parser-readline');
 
-if (process.argv.length < 3) {
-  console.error('Usage: node serial-gauge-log.js <serial-port>');
-  process.exit(1);
+// Simple argument parser
+function parseArgs() {
+  const args = process.argv.slice(2);
+  let port = null, count = 0, timeout = 0;
+  for (let i = 0; i < args.length; ++i) {
+    if (!port && !args[i].startsWith('--')) {
+      port = args[i];
+    } else if (args[i] === '--count') {
+      count = parseInt(args[++i], 10);
+    } else if (args[i] === '--timeout') {
+      timeout = parseFloat(args[++i]);
+    }
+  }
+  return { port, count, timeout };
 }
 
-const portPath = process.argv[2];
+const { port: portPath, count: valueCount, timeout } = parseArgs();
+if (!portPath) {
+  console.error('Usage: node serial-gauge-log.js <serial-port> [--count N] [--timeout SECONDS]');
+  process.exit(1);
+}
 const EXPECTED_DIGIT_LENGTH = 6; // adjust if your gauge sends a different length
 
 
@@ -22,8 +38,12 @@ const port = new SerialPort(portPath, {
   autoOpen: true,
 });
 
+
 let serialBuffer = '';
 let pendingMinus = false;
+let collectedValues = [];
+let startTime = Date.now();
+let done = false;
 
 function logLine(msg) {
   const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
@@ -98,12 +118,27 @@ port.on('error', (err) => {
   logLine('[ERROR] ' + err.message);
 });
 
+
 port.on('data', (data) => {
+  if (done) return;
   parseGaugeData(data, {
     onValue: (mmVal, numStr) => {
-      // User can handle parsed value here
-      // logLine(`[VALUE] ${mmVal} mm`);
+      collectedValues.push([mmVal, numStr]);
+      console.log(`[VALUE] ${mmVal} mm`);
+      if (valueCount && collectedValues.length >= valueCount) {
+        logLine(`[DONE] Collected ${collectedValues.length} value(s). Exiting.`);
+        done = true;
+        process.exit(0);
+      }
     },
-    // logRaw, logBin, logParsed, logInfo, logWarn, logError can be overridden if desired
   });
 });
+
+if (timeout > 0) {
+  setTimeout(() => {
+    if (!done) {
+      logLine(`[TIMEOUT] Timeout reached after ${timeout} seconds.`);
+      process.exit(0);
+    }
+  }, timeout * 1000);
+}

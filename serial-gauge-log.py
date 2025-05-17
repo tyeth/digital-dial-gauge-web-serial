@@ -2,15 +2,20 @@
 # Python script to read and parse digital dial gauge data from a serial port
 # Usage: python3 serial_gauge_log.py /dev/ttyUSB0
 
+
 import sys
 import serial
 import time
+import argparse
 
-if len(sys.argv) < 2:
-    print('Usage: python3 serial_gauge_log.py <serial-port>')
-    sys.exit(1)
 
-port_path = sys.argv[1]
+parser = argparse.ArgumentParser(description='Read and parse digital dial gauge data from a serial port')
+parser.add_argument('port', help='Serial port path, e.g. /dev/ttyUSB0')
+parser.add_argument('--count', type=int, default=0, help='Number of values to read before exiting (0 = infinite)')
+parser.add_argument('--timeout', type=float, default=0, help='Timeout in seconds to wait for values (0 = no timeout)')
+args = parser.parse_args()
+
+port_path = args.port
 EXPECTED_DIGIT_LENGTH = 6  # adjust if your gauge sends a different length
 
 ser = serial.Serial(
@@ -24,6 +29,7 @@ ser = serial.Serial(
 
 serial_buffer = ''
 pending_minus = False
+collected_values = []
 
 def default_log_line(msg):
     line = f"[{time.strftime('%H:%M:%S')}] {msg}"
@@ -85,24 +91,31 @@ def parse_gauge_data(
             serial_buffer += ch
 
 def on_value_callback(mm_val, num_str):
-    # User can handle parsed value here
-    # print(f"[VALUE] {mm_val} mm")
-    pass
+    collected_values.append((mm_val, num_str))
+    print(f"[VALUE] {mm_val} mm")
 
 def main():
     default_log_line(f"[STATUS] Connected to {port_path}")
+    start_time = time.time()
     try:
         while True:
+            if args.timeout and (time.time() - start_time) > args.timeout:
+                default_log_line(f"[TIMEOUT] Timeout reached after {args.timeout} seconds.")
+                break
             data = ser.read(ser.in_waiting or 1)
             if not data:
+                time.sleep(0.01)
                 continue
             parse_gauge_data(
                 data,
                 on_value=on_value_callback,
-                # log_raw=..., log_bin=..., log_parsed=..., log_info=..., log_warn=..., log_error=...
             )
+            if args.count and len(collected_values) >= args.count:
+                default_log_line(f"[DONE] Collected {len(collected_values)} value(s). Exiting.")
+                break
     except KeyboardInterrupt:
         default_log_line('[STATUS] Disconnected')
+    finally:
         ser.close()
 
 if __name__ == '__main__':

@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="origin-trial" content="your-origin-trial-token-here">
+    <title>Digital Dial Gauge Serial Console</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        
+        .panel {
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 15px;
+            background-color: #f9f9f9;
+        }
+        
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        button:hover {
+            background-color: #45a049;
+        }
+        
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        
+        select, input {
+            padding: 6px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+        
+        .serial-params {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .param-group {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        label {
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        #connection-status {
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        
+        .disconnected {
+            color: #d9534f;
+        }
+        
+        .connected {
+            color: #5cb85c;
+        }
+        
+        .data-display {
+            background-color: #fff;
+            border: 1px solid #ddd;
+            padding: 10px;
+            height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+        }
+        
+        .gauge-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 200px;
+            position: relative;
+        }
+        
+        .gauge {
+            width: 200px;
+            height: 100px;
+            position: relative;
+            overflow: hidden;
+            border-top-left-radius: 100px;
+            border-top-right-radius: 100px;
+            border: 10px solid #f0f0f0;
+            border-bottom: none;
+        }
+        
+        .gauge-value {
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to right, #5cb85c, #f0ad4e, #d9534f);
+            transform-origin: bottom center;
+            transition: transform 0.5s ease-out;
+        }
+        
+        .gauge-center {
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            width: 20px;
+            height: 20px;
+            background-color: #333;
+            border-radius: 50%;
+            transform: translateX(-50%);
+        }
+        
+        .gauge-needle {
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            width: 2px;
+            height: 95px;
+            background-color: #333;
+            transform-origin: bottom center;
+            transform: translateX(-50%) rotate(0deg);
+            transition: transform 0.5s ease-out;
+        }
+        
+        .gauge-reading {
+            font-size: 24px;
+            font-weight: bold;
+            margin-top: 20px;
+            text-align: center;
+        }
+        
+        .actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .logs-container {
+            margin-top: 20px;
+        }
+        
+        .data-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Digital Dial Gauge Web Serial Console</h1>
+        
+        <div class="panel">
+            <h2>Connection</h2>
+            <div class="controls">
+                <button id="connect-button">Connect to Device</button>
+                <button id="disconnect-button" disabled>Disconnect</button>
+                <span id="connection-status" class="disconnected">Disconnected</span>
+            </div>
+            
+            <div class="serial-params">
+                <div class="param-group">
+                    <label for="baud-rate">Baud Rate</label>
+                    <select id="baud-rate">
+                        <option value="1200">1200</option>
+                        <option value="2400">2400</option>
+                        <option value="4800">4800</option>
+                        <option value="9600">9600</option>
+                        <option value="19200" selected>19200</option>
+                        <option value="38400">38400</option>
+                        <option value="57600">57600</option>
+                        <option value="115200">115200</option>
+                    </select>
+                </div>
+                
+                <div class="param-group">
+                    <label for="data-bits">Data Bits</label>
+                    <select id="data-bits">
+                        <option value="7">7</option>
+                        <option value="8" selected>8</option>
+                    </select>
+                </div>
+                
+                <div class="param-group">
+                    <label for="parity">Parity</label>
+                    <select id="parity">
+                        <option value="none" selected>None</option>
+                        <option value="even">Even</option>
+                        <option value="odd">Odd</option>
+                    </select>
+                </div>
+                
+                <div class="param-group">
+                    <label for="stop-bits">Stop Bits</label>
+                    <select id="stop-bits">
+                        <option value="1" selected>1</option>
+                        <option value="2">2</option>
+                    </select>
+                </div>
+                
+                <div class="param-group">
+                    <label for="flow-control">Flow Control</label>
+                    <select id="flow-control">
+                        <option value="none" selected>None</option>
+                        <option value="hardware">Hardware</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        
+        <div class="panel">
+            <h2>Gauge Reading</h2>
+            <div class="gauge-container">
+                <div class="gauge">
+                    <div class="gauge-value"></div>
+                    <div class="gauge-center"></div>
+                    <div class="gauge-needle"></div>
+                </div>
+            </div>
+            <div class="gauge-reading" id="gauge-value">0.000 mm</div>
+            <div class="controls">
+                <button id="zero-button" disabled>Zero Gauge</button>
+                <button id="unit-toggle" disabled>Toggle Unit (mm/in)</button>
+            </div>
+        </div>
+        
+        <div class="panel logs-container">
+            <div class="data-header">
+                <h2>Data Log</h2>
+                <div class="actions">
+                    <button id="clear-button">Clear Log</button>
+                    <button id="export-button">Export Data</button>
+                </div>
+            </div>
+            <div class="data-display" id="data-log"></div>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const connectButton = document.getElementById('connect-button');
+        const disconnectButton = document.getElementById('disconnect-button');
+        const connectionStatus = document.getElementById('connection-status');
+        const dataLog = document.getElementById('data-log');
+        const clearButton = document.getElementById('clear-button');
+        const exportButton = document.getElementById('export-button');
+        const zeroButton = document.getElementById('zero-button');
+        const unitToggleButton = document.getElementById('unit-toggle');
+        const gaugeValue = document.getElementById('gauge-value');
+        const gaugeNeedle = document.querySelector('.gauge-needle');
+        
+        // Serial port settings elements
+        const baudRateSelect = document.getElementById('baud-rate');
+        const dataBitsSelect = document.getElementById('data-bits');
+        const paritySelect = document.getElementById('parity');
+        const stopBitsSelect = document.getElementById('stop-bits');
+        const flowControlSelect = document.getElementById('flow-control');
+        
+        // Global variables
+        let port = null;
+        let reader = null;
+        let readableStreamClosed = null;
+        let currentUnit = 'mm';
+        let offset = 0;
+        let dataArray = [];
+        
+        // Check if Web Serial API is supported
+        if (!('serial' in navigator)) {
+            alert('Web Serial API is not supported in this browser. Please use Chrome, Edge, or other Chromium-based browsers.');
+            connectButton.disabled = true;
+        }
+        
+        // Event Listeners
+        connectButton.addEventListener('click', connectToDevice);
+        disconnectButton.addEventListener('click', disconnectFromDevice);
+        clearButton.addEventListener('click', clearLog);
+        exportButton.addEventListener('click', exportData);
+        zeroButton.addEventListener('click', zeroGauge);
+        unitToggleButton.addEventListener('click', toggleUnit);
+        
+        // Connect to serial device
+        async function connectToDevice() {
+            try {
+                // Request port access
+                port = await navigator.serial.requestPort();
+                
+                // Get serial port configuration values
+                const baudRate = parseInt(baudRateSelect.value);
+                const dataBits = parseInt(dataBitsSelect.value);
+                const parity = paritySelect.value;
+                const stopBits = parseInt(stopBitsSelect.value);
+                const flowControl = flowControlSelect.value;
+                
+                // Open the port with the selected settings
+                await port.open({
+                    baudRate: baudRate,
+                    dataBits: dataBits,
+                    parity: parity,
+                    stopBits: stopBits,
+                    flowControl: flowControl
+                });
+                
+                // Update UI
+                connectButton.disabled = true;
+                disconnectButton.disabled = false;
+                zeroButton.disabled = false;
+                unitToggleButton.disabled = false;
+                connectionStatus.textContent = 'Connected';
+                connectionStatus.className = 'connected';
+                
+                // Create TextDecoder to parse the received data
+                const decoder = new TextDecoderStream();
+                readableStreamClosed = port.readable.pipeTo(decoder.writable);
+                
+                // Read data from the port
+                const reader = decoder.readable.getReader();
+                
+                // Log the connection parameters
+                appendToLog(`Connected with ${baudRate} baud, ${dataBits}${parity.charAt(0).toUpperCase()}${stopBits}`);
+                
+                // Start reading data loop
+                readData(reader);
+            } catch (error) {
+                console.error('Error connecting to the serial device:', error);
+                appendToLog(`Error connecting: ${error.message}`);
+            }
+        }
+        
+        async function readData(reader) {
+            try {
+                // Buffer to accumulate data until we get a complete measurement
+                let buffer = '';
+                
+                while (true) {
+                    const { value, done } = await reader.read();
+                    
+                    if (done) {
+                        // Reader has been cancelled
+                        break;
+                    }
+                    
+                    // Add new data to buffer
+                    buffer += value;
+                    
+                    // Look for line terminators (CR or LF or both)
+                    const lines = buffer.split(/\r?\n/);
+                    
+                    // Process all complete lines
+                    if (lines.length > 1) {
+                        for (let i = 0; i < lines.length - 1; i++) {
+                            if (lines[i].trim().length > 0) {
+                                processData(lines[i]);
+                            }
+                        }
+                        
+                        // Keep the last (potentially incomplete) line in the buffer
+                        buffer = lines[lines.length - 1];
+                    }
+                }
+            } catch (error) {
+                console.error('Error reading data:', error);
+                appendToLog(`Error reading data: ${error.message}`);
+            } finally {
+                // Release the lock on the reader
+                reader.releaseLock();
+            }
+        }
+        
+        // Process received data
+        function processData(data) {
+            // Log raw data
+            appendToLog(`Received: ${data}`);
+            
+            // Try to parse the measurement
+            try {
+                // Based on the PIC microcontroller code in the Hackaday project
+                // The data is sent as ASCII characters representing the measurement
+                
+                // Strip any non-numeric characters except for decimal point and minus sign
+                const cleanedData = data.replace(/[^\d.-]/g, '');
+                
+                if (cleanedData.length > 0) {
+                    const value = parseFloat(cleanedData);
+                    
+                    if (!isNaN(value)) {
+                        // Apply offset (for zero function)
+                        const adjustedValue = value - offset;
+                        
+                        // Update the gauge display
+                        updateGaugeDisplay(adjustedValue, currentUnit);
+                        
+                        // Add to data array for export
+                        dataArray.push({
+                            timestamp: new Date().toISOString(),
+                            value: adjustedValue,
+                            unit: currentUnit
+                        });
+                    }
+                }
+            } catch (error) {
+                console.error('Error parsing data:', error);
+            }
+        }
+        
+        // Update the gauge display
+        function updateGaugeDisplay(value, unit) {
+            // Update text display
+            gaugeValue.textContent = `${value.toFixed(3)} ${unit}`;
+            
+            // Update needle position (rotate between -90 and 90 degrees based on value)
+            // Assuming a range of -10 to +10 for the gauge, adjust as needed
+            const minValue = -10;
+            const maxValue = 10;
+            const clampedValue = Math.max(minValue, Math.min(maxValue, value));
+            const angle = ((clampedValue - minValue) / (maxValue - minValue) * 180) - 90;
+            gaugeNeedle.style.transform = `translateX(-50%) rotate(${angle}deg)`;
+        }
+        
+        // Disconnect from the device
+        async function disconnectFromDevice() {
+            if (reader) {
+                await reader.cancel();
+                await readableStreamClosed;
+                reader = null;
+                readableStreamClosed = null;
+            }
+            
+            if (port) {
+                await port.close();
+                port = null;
+            }
+            
+            // Update UI
+            connectButton.disabled = false;
+            disconnectButton.disabled = true;
+            zeroButton.disabled = true;
+            unitToggleButton.disabled = true;
+            connectionStatus.textContent = 'Disconnected';
+            connectionStatus.className = 'disconnected';
+            
+            appendToLog('Disconnected from device');
+        }
+        
+        // Clear the data log
+        function clearLog() {
+            dataLog.innerHTML = '';
+            dataArray = [];
+        }
+        
+        // Export data as CSV
+        function exportData() {
+            if (dataArray.length === 0) {
+                alert('No data to export');
+                return;
+            }
+            
+            // Create CSV content
+            const csvContent = 'data:text/csv;charset=utf-8,' 
+                + 'Timestamp,Value,Unit\n'
+                + dataArray.map(row => 
+                    `${row.timestamp},${row.value},${row.unit}`
+                ).join('\n');
+            
+            // Create download link
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement('a');
+            link.setAttribute('href', encodedUri);
+            link.setAttribute('download', `dial_gauge_data_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.csv`);
+            document.body.appendChild(link);
+            
+            // Trigger download
+            link.click();
+            document.body.removeChild(link);
+        }
+        
+        // Zero the gauge (set current reading as reference)
+        function zeroGauge() {
+            // Extract current value from display
+            const currentValueMatch = gaugeValue.textContent.match(/(-?\d+\.?\d*)/);
+            if (currentValueMatch) {
+                offset = parseFloat(currentValueMatch[1]) + offset;
+                appendToLog(`Gauge zeroed. New offset: ${offset} ${currentUnit}`);
+                
+                // Update display with zero
+                updateGaugeDisplay(0, currentUnit);
+            }
+        }
+        
+        // Toggle between mm and inches
+        function toggleUnit() {
+            if (currentUnit === 'mm') {
+                currentUnit = 'in';
+                
+                // Convert current value from mm to inches (1 mm = 0.03937 inches)
+                const currentValueMatch = gaugeValue.textContent.match(/(-?\d+\.?\d*)/);
+                if (currentValueMatch) {
+                    const mmValue = parseFloat(currentValueMatch[1]);
+                    const inValue = mmValue * 0.03937;
+                    updateGaugeDisplay(inValue, currentUnit);
+                }
+            } else {
+                currentUnit = 'mm';
+                
+                // Convert current value from inches to mm (1 inch = 25.4 mm)
+                const currentValueMatch = gaugeValue.textContent.match(/(-?\d+\.?\d*)/);
+                if (currentValueMatch) {
+                    const inValue = parseFloat(currentValueMatch[1]);
+                    const mmValue = inValue * 25.4;
+                    updateGaugeDisplay(mmValue, currentUnit);
+                }
+            }
+            
+            appendToLog(`Unit changed to ${currentUnit}`);
+        }
+        
+        // Append message to data log
+        function appendToLog(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.textContent = `[${timestamp}] ${message}`;
+            dataLog.appendChild(logEntry);
+            dataLog.scrollTop = dataLog.scrollHeight;
+        }
+        
+        // Initial log message
+        appendToLog('Web Serial Console ready. Connect to a device to begin.');
+    </script>
+</body>
+</html>

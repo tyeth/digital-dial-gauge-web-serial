@@ -1,0 +1,200 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Digital Dial Gauge Web Serial Test</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2em; }
+    #gauge-value { font-size: 2em; margin: 1em 0; }
+    #status { color: #007700; margin-bottom: 1em; }
+    #error { color: #bb2222; margin-bottom: 1em; }
+    .controls { margin-bottom: 1em; }
+    button { margin-right: 1em; }
+  </style>
+</head>
+<body>
+  <h1>Digital Dial Gauge Web Serial Test</h1>
+  <div id="status">Not connected</div>
+  <div id="error"></div>
+  <div class="controls">
+    <button id="connect-btn">Connect</button>
+    <button id="zero-btn" disabled>Zero</button>
+    <button id="unit-btn" disabled>mm/inch</button>
+    <button id="download-btn" disabled>Download CSV</button>
+  </div>
+  <div id="gauge-value">--.-- mm</div>
+  <div style="margin-top:2em;">
+    <label for="log">Log window:</label>
+    <button id="copy-log-btn" type="button">Copy Log</button><br>
+    <textarea id="log" rows="100000" cols="80" readonly style="margin-top:0.5em;"></textarea>
+  </div>
+  <script>
+    let port, reader, keepReading = false;
+    let zeroOffset = 0;
+    let useInches = false;
+    let logData = [];
+    let logLines = [];
+
+    const statusEl = document.getElementById('status');
+    const errorEl = document.getElementById('error');
+    const valueEl = document.getElementById('gauge-value');
+    const connectBtn = document.getElementById('connect-btn');
+    const zeroBtn = document.getElementById('zero-btn');
+    const unitBtn = document.getElementById('unit-btn');
+    const downloadBtn = document.getElementById('download-btn');
+    const logEl = document.getElementById('log');
+    const copyLogBtn = document.getElementById('copy-log-btn');
+
+    function setStatus(msg) {
+      statusEl.textContent = msg;
+      logLine('[STATUS] ' + msg);
+    }
+    function setError(msg) {
+      errorEl.textContent = msg;
+      logLine('[ERROR] ' + msg);
+    }
+    function logLine(msg) {
+      const line = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      logLines.push(line);
+      if (logLines.length > 200) logLines.shift(); // keep log window manageable
+      logEl.value = logLines.join('\n');
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+    function updateValue(val) {
+      let displayVal = val - zeroOffset;
+      let unit = 'mm';
+      if (useInches) {
+        displayVal = displayVal / 25.4;
+        unit = 'in';
+      }
+      valueEl.textContent = displayVal.toFixed(3) + ' ' + unit;
+      logLine(`[DATA] Value: ${displayVal.toFixed(3)} ${unit} (raw: ${val})`);
+    }
+    function enableControls(connected) {
+      zeroBtn.disabled = !connected;
+      unitBtn.disabled = !connected;
+      downloadBtn.disabled = !connected;
+    }
+    async function connectSerial() {
+      setError('');
+      try {
+        port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 9600, dataBits: 8, stopBits: 1, parity: 'none', flowControl: 'none' });
+        setStatus('Connected');
+        enableControls(true);
+        keepReading = true;
+        readSerialLoop();
+      } catch (err) {
+        setError('Connection failed: ' + err);
+        setStatus('Not connected');
+      }
+    }
+    // Buffer for incoming serial data
+    let serialBuffer = '';
+    let pendingMinus = false;
+    async function readSerialLoop() {
+      const decoder = new TextDecoder();
+      reader = port.readable.getReader();
+      try {
+        while (keepReading) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value) {
+            // Log the raw binary as hex string
+            const hex = Array.from(value).map(b => b.toString(16).padStart(2, '0')).join(' ');
+            logLine(`[BIN] [${value.length} bytes] ${hex}`);
+            const text = decoder.decode(value);
+            logLine(`[RAW] ${JSON.stringify(text)}`);
+
+            // Process each character in the chunk
+            for (let i = 0; i < text.length; i++) {
+              const ch = text[i];
+              if (ch === '-') {
+                // Mark that the next number is negative
+                pendingMinus = true;
+                continue;
+              }
+              if (ch === '\r' || ch === '\n' || ch === '\u0012') {
+                // End of message, try to parse
+                if (serialBuffer.length > 0) {
+                  // Remove leading zeros
+                  let numStr = serialBuffer.replace(/^0+/, '');
+                  if (numStr.length === 0) numStr = '0';
+                  // Insert decimal point before last 3 digits if needed
+                  if (numStr.length > 3) {
+                    numStr = numStr.slice(0, -3) + '.' + numStr.slice(-3);
+                  } else if (numStr.length === 3) {
+                    numStr = '0.' + numStr;
+                  } else if (numStr.length === 2) {
+                    numStr = '0.0' + numStr;
+                  } else if (numStr.length === 1) {
+                    numStr = '0.00' + numStr;
+                  }
+                  if (pendingMinus) {
+                    numStr = '-' + numStr;
+                  }
+                  const mmVal = parseFloat(numStr);
+                  if (!isNaN(mmVal)) {
+                    updateValue(mmVal);
+                    logData.push({ timestamp: new Date().toISOString(), value: mmVal });
+                    logLine(`[PARSED] ${numStr} mm`);
+                  } else {
+                    logLine('[WARN] Could not parse buffered value: ' + JSON.stringify(serialBuffer));
+                  }
+                }
+                serialBuffer = '';
+                pendingMinus = false;
+              } else if (ch >= '0' && ch <= '9') {
+                serialBuffer += ch;
+              }
+            }
+          }
+        }
+      } catch (err) {
+        setError('Read error: ' + err);
+        logLine('[EXCEPTION] ' + err);
+      } finally {
+        reader.releaseLock();
+        setStatus('Disconnected');
+        enableControls(false);
+      }
+    }
+    copyLogBtn.addEventListener('click', () => {
+      logEl.select();
+      document.execCommand('copy');
+      logLine('[INFO] Log copied to clipboard');
+    });
+    connectBtn.addEventListener('click', connectSerial);
+    zeroBtn.addEventListener('click', () => {
+      const currentText = valueEl.textContent;
+      const match = currentText.match(/(-?\d+\.\d+)/);
+      if (match) zeroOffset = parseFloat(match[1]) + zeroOffset;
+    });
+    unitBtn.addEventListener('click', () => {
+      useInches = !useInches;
+      // Re-display last value if available
+      if (logData.length > 0) updateValue(logData[logData.length - 1].value);
+    });
+    downloadBtn.addEventListener('click', () => {
+      let csv = 'timestamp,value(mm)\n';
+      logData.forEach(row => {
+        csv += `${row.timestamp},${row.value}\n`;
+      });
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'dial_gauge_data_' + new Date().toISOString().replace(/[:.]/g, '-') + '.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+    window.addEventListener('beforeunload', async () => {
+      keepReading = false;
+      if (reader) await reader.cancel();
+      if (port && port.readable) await port.close();
+    });
+  </script>
+</body>
+</html>

@@ -7,12 +7,99 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Digital Dial Gauge Web Serial Test</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 2em; }
-    #gauge-value { font-size: 2em; margin: 1em 0; }
-    #status { color: #007700; margin-bottom: 1em; }
-    #error { color: #bb2222; margin-bottom: 1em; }
-    .controls { margin-bottom: 1em; }
-    button { margin-right: 1em; }
+    body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        line-height: 1.6;
+    }
+    .container {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+    .panel {
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        padding: 15px;
+        background-color: #f9f9f9;
+    }
+    .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 1em;
+    }
+    button {
+        padding: 8px 16px;
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        margin-right: 1em;
+    }
+    button:hover {
+        background-color: #45a049;
+    }
+    button:disabled {
+        background-color: #cccccc;
+        cursor: not-allowed;
+    }
+    .gauge-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 200px;
+        position: relative;
+    }
+    .gauge {
+        width: 200px;
+        height: 100px;
+        position: relative;
+        overflow: hidden;
+        border-top-left-radius: 100px;
+        border-top-right-radius: 100px;
+        border: 10px solid #f0f0f0;
+        border-bottom: none;
+    }
+    .gauge-value {
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(to right, #5cb85c, #f0ad4e, #d9534f);
+        transform-origin: bottom center;
+        transition: transform 0.5s ease-out;
+    }
+    .gauge-center {
+        position: absolute;
+        bottom: 0;
+        left: 50%;
+        width: 20px;
+        height: 20px;
+        background-color: #333;
+        border-radius: 50%;
+        transform: translateX(-50%);
+    }
+    .gauge-needle {
+        position: absolute;
+        bottom: 0;
+        left: 50%;
+        width: 2px;
+        height: 95px;
+        background-color: #333;
+        transform-origin: bottom center;
+        transform: translateX(-50%) rotate(0deg);
+        transition: transform 0.5s ease-out;
+    }
+    .gauge-reading {
+        font-size: 24px;
+        font-weight: bold;
+        margin-top: 20px;
+        text-align: center;
+    }
   </style>
 </head>
 <body>
@@ -25,7 +112,14 @@
     <button id="unit-btn" disabled>mm/inch</button>
     <button id="download-btn" disabled>Download CSV</button>
   </div>
-  <div id="gauge-value">--.-- mm</div>
+  <div class="gauge-container">
+    <div class="gauge">
+      <div class="gauge-value"></div>
+      <div class="gauge-center"></div>
+      <div class="gauge-needle"></div>
+    </div>
+  </div>
+  <div class="gauge-reading" id="gauge-value">0.000 mm</div>
   <div style="margin-top:2em;">
     <label for="log">Log window:</label>
     <button id="copy-log-btn" type="button">Copy Log</button><br>

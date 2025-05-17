@@ -513,9 +513,17 @@
                                 
                                 // Process each special format as a reading with appropriate scaling
                                 specialFormats.forEach(match => {
-                                    // Create a packet with metadata to indicate this is a special format
-                                    const packet = new TextEncoder().encode(`SPECIAL_FORMAT:${match}`);
-                                    processPacket(packet);
+                                    // Check if this is a negative value pattern like "-009888"
+                                    if (match.startsWith('-')) {
+                                        appendToLog(`INFO: Detected negative measurement: ${match}`);
+                                        // Create a packet with metadata to indicate this is a negative special format
+                                        const packet = new TextEncoder().encode(`NEGATIVE_FORMAT:${match}`);
+                                        processPacket(packet);
+                                    } else {
+                                        // Regular special format (e.g., "009888")
+                                        const packet = new TextEncoder().encode(`SPECIAL_FORMAT:${match}`);
+                                        processPacket(packet);
+                                    }
                                     lastPacketTime = Date.now();
                                 });
                             }
@@ -592,8 +600,16 @@
                                     const specialMatch = bufferText.match(/[-]?\d{6}/);
                                     if (specialMatch) {
                                         appendToLog(`INFO: Found special format value "${specialMatch[0]}" in buffer fragment`);
-                                        const packet = new TextEncoder().encode(`SPECIAL_FORMAT:${specialMatch[0]}`);
-                                        processPacket(packet);
+                                        
+                                        // Check if it's a negative special format
+                                        if (specialMatch[0].startsWith('-')) {
+                                            appendToLog(`INFO: Detected negative measurement in buffer: ${specialMatch[0]}`);
+                                            const packet = new TextEncoder().encode(`NEGATIVE_FORMAT:${specialMatch[0]}`);
+                                            processPacket(packet);
+                                        } else {
+                                            const packet = new TextEncoder().encode(`SPECIAL_FORMAT:${specialMatch[0]}`);
+                                            processPacket(packet);
+                                        }
                                         
                                         // Clear the processed portion from buffer
                                         const matchIndex = bufferText.indexOf(specialMatch[0]);
@@ -719,12 +735,28 @@
                 try {
                     const textData = new TextDecoder().decode(packet).trim();
                     
-                    // Check for special format marker (from the data scanning)
-                    if (textData.startsWith('SPECIAL_FORMAT:')) {
+                    // Check for special format markers (from the data scanning)
+                    if (textData.startsWith('NEGATIVE_FORMAT:')) {
+                        const specialValue = textData.substring('NEGATIVE_FORMAT:'.length);
+                        appendToLog(`INFO: Processing negative format value: ${specialValue}`);
+                        
+                        // Format like "-009888" must be interpreted as -9.888mm
+                        const numValue = parseInt(specialValue, 10);
+                        if (!isNaN(numValue)) {
+                            // Convert to mm by dividing by 1000
+                            const measuredValue = numValue / 1000;
+                            interpretations.push({
+                                method: "Negative format (÷1000)", 
+                                rawValue: numValue,
+                                adjustedValue: measuredValue - offset,
+                                confidence: "very high" // Highest confidence for negative format
+                            });
+                        }
+                    } else if (textData.startsWith('SPECIAL_FORMAT:')) {
                         const specialValue = textData.substring('SPECIAL_FORMAT:'.length);
                         appendToLog(`INFO: Processing special format value: ${specialValue}`);
                         
-                        // Format like "-009888" should be interpreted as -9.888mm
+                        // Format like "009888" should be interpreted as 9.888mm
                         const numValue = parseInt(specialValue, 10);
                         if (!isNaN(numValue)) {
                             // Convert to mm by dividing by 1000
@@ -912,6 +944,7 @@
         // Check if a measurement is consistent with recent values
         function isConsistentMeasurement(value) {
             if (recentMeasurements.length === 0) {
+                appendToLog(`INFO: First measurement (${value.toFixed(3)}) accepted as baseline`);
                 return true; // First measurement is always accepted
             }
             
@@ -922,6 +955,19 @@
                 return diff > 1.0; // Threshold for what's considered a jump
             });
             
+            // For values near zero or negative values, be more lenient
+            if ((value < 0 || Math.abs(value) < 0.1) && recentMeasurements.some(v => v < 0 || Math.abs(v) < 0.1)) {
+                appendToLog(`INFO: Applying special consistency rules for negative/zero values: ${value.toFixed(3)}`);
+                return true; // Accept negative values if we've seen negative values before
+            }
+            
+            // Log consistency check results
+            if (isDifferentFromAll) {
+                appendToLog(`WARNING: Value ${value.toFixed(3)} differs significantly from recent values [${recentMeasurements.map(v => v.toFixed(3)).join(', ')}]`);
+            } else {
+                appendToLog(`INFO: Value ${value.toFixed(3)} is consistent with recent measurements`);
+            }
+            
             // Reject if the value is very different from all recent measurements
             return !isDifferentFromAll;
         }
@@ -930,7 +976,10 @@
         function addToRecentMeasurements(value) {
             recentMeasurements.push(value);
             if (recentMeasurements.length > MAX_RECENT_MEASUREMENTS) {
-                recentMeasurements.shift(); // Remove oldest
+                const removed = recentMeasurements.shift(); // Remove oldest
+                appendToLog(`INFO: Updated measurement history. Removed ${removed.toFixed(3)}, added ${value.toFixed(3)}`);
+            } else {
+                appendToLog(`INFO: Added ${value.toFixed(3)} to measurement history (${recentMeasurements.length}/${MAX_RECENT_MEASUREMENTS})`);
             }
         }
         
@@ -1032,26 +1081,58 @@
         function exportData() {
             if (dataArray.length === 0) {
                 alert('No data to export');
+                appendToLog('WARNING: Export attempted with no data available');
                 return;
             }
             
-            // Create CSV content
-            const csvContent = 'data:text/csv;charset=utf-8,' 
-                + 'Timestamp,Value,Unit\n'
-                + dataArray.map(row => 
-                    `${row.timestamp},${row.value},${row.unit}`
-                ).join('\n');
-            
-            // Create download link
-            const encodedUri = encodeURI(csvContent);
-            const link = document.createElement('a');
-            link.setAttribute('href', encodedUri);
-            link.setAttribute('download', `dial_gauge_data_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.csv`);
-            document.body.appendChild(link);
-            
-            // Trigger download
-            link.click();
-            document.body.removeChild(link);
+            try {
+                appendToLog(`INFO: Exporting ${dataArray.length} measurements`);
+                
+                // Create CSV header with all possible fields
+                let headers = ['Timestamp', 'Value', 'Unit'];
+                
+                // Check for extended properties in the data
+                if (dataArray.some(row => row.raw)) headers.push('RawHex');
+                if (dataArray.some(row => row.method)) headers.push('Method');
+                if (dataArray.some(row => row.consistent !== undefined)) headers.push('Consistent');
+                
+                // Create CSV content with headers
+                let csvContent = 'data:text/csv;charset=utf-8,' + headers.join(',') + '\n';
+                
+                // Add each row of data
+                csvContent += dataArray.map(row => {
+                    let rowData = [
+                        row.timestamp,
+                        row.value,
+                        row.unit
+                    ];
+                    
+                    // Add optional fields if they exist in the headers
+                    if (headers.includes('RawHex')) rowData.push(row.raw || '');
+                    if (headers.includes('Method')) rowData.push(row.method || '');
+                    if (headers.includes('Consistent')) rowData.push(row.consistent !== undefined ? row.consistent : '');
+                    
+                    return rowData.join(',');
+                }).join('\n');
+                
+                // Create download link
+                const fileName = `dial_gauge_data_${new Date().toISOString().slice(0,19).replace(/:/g, '-')}.csv`;
+                const encodedUri = encodeURI(csvContent);
+                const link = document.createElement('a');
+                link.setAttribute('href', encodedUri);
+                link.setAttribute('download', fileName);
+                document.body.appendChild(link);
+                
+                // Trigger download
+                link.click();
+                document.body.removeChild(link);
+                
+                appendToLog(`SUCCESS: Exported data to ${fileName}`);
+            } catch (error) {
+                console.error('Error exporting data:', error);
+                appendToLog(`ERROR: Failed to export data: ${error.message}`);
+                alert(`Export failed: ${error.message}`);
+            }
         }
         
         // Zero the gauge (set current reading as reference)

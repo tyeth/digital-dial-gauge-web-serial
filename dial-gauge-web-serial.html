@@ -306,6 +306,7 @@
         exportButton.addEventListener('click', exportData);
         zeroButton.addEventListener('click', zeroGauge);
         unitToggleButton.addEventListener('click', toggleUnit);
+        resetMemoryButton.addEventListener('click', resetMemory);
         
         // Connect to serial device
         async function connectToDevice() {
@@ -334,6 +335,7 @@
                 disconnectButton.disabled = false;
                 zeroButton.disabled = false;
                 unitToggleButton.disabled = false;
+                resetMemoryButton.disabled = false;
                 connectionStatus.textContent = 'Connected';
                 connectionStatus.className = 'connected';
                 
@@ -1152,6 +1154,7 @@
             disconnectButton.disabled = true;
             zeroButton.disabled = true;
             unitToggleButton.disabled = true;
+            resetMemoryButton.disabled = true;
             connectionStatus.textContent = 'Disconnected';
             connectionStatus.className = 'disconnected';
             
@@ -1260,6 +1263,22 @@
             }
             
             appendToLog(`Unit changed to ${currentUnit}`);
+        }
+        
+        // Reset measurement memory when stuck or after sign changes
+        function resetMemory() {
+            recentMeasurements = [];
+            hasReceivedNegativeValue = false;
+            appendToLog(`INFO: Memory reset - cleared ${MAX_RECENT_MEASUREMENTS} measurement slots and sign tracking`);
+            
+            // Update display to show reset state
+            const currentValueMatch = gaugeValue.textContent.match(/(-?\d+\.?\d*)/);
+            if (currentValueMatch) {
+                const currentValue = parseFloat(currentValueMatch[1]);
+                // Re-display the same value but with reset memory
+                updateGaugeDisplay(currentValue, currentUnit);
+                appendToLog(`INFO: Current value (${currentValue.toFixed(3)} ${currentUnit}) maintained but consistency checks reset`);
+            }
         }
         
         // Append message to data log

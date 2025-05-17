@@ -335,12 +335,37 @@
                 connectionStatus.textContent = 'Connected';
                 connectionStatus.className = 'connected';
                 
-                // Create TextDecoder to parse the received data
-                const decoder = new TextDecoderStream();
-                readableStreamClosed = port.readable.pipeTo(decoder.writable);
-                
-                // Read data from the port
-                const reader = decoder.readable.getReader();
+                appendToLog(`Opening port with ${baudRate} baud, ${dataBits}${parity.charAt(0).toUpperCase()}${stopBits}`);
+
+                // We'll try using a binary reader first since the data looks binary
+                try {
+                    // Set up a reader for binary data
+                    const reader = port.readable.getReader();
+                    readableStreamClosed = new Promise(resolve => {
+                        reader.closed.then(() => {
+                            appendToLog('Reader closed');
+                            resolve();
+                        });
+                    });
+                    
+                    appendToLog('Binary reader set up');
+                    appendToLog(`Serial port parameters: ${baudRate} baud, ${dataBits}${parity.charAt(0).toUpperCase()}${stopBits}`);
+                    appendToLog('Starting data read loop...');
+                    
+                    // Start reading binary data
+                    readBinaryData(reader);
+                } catch (error) {
+                    appendToLog(`Error setting up binary reader: ${error}. Falling back to text mode.`);
+                    
+                    // Fallback to text mode if binary fails
+                    const decoder = new TextDecoderStream();
+                    readableStreamClosed = port.readable.pipeTo(decoder.writable);
+                    const reader = decoder.readable.getReader();
+                    
+                    appendToLog('TextDecoder set up with default encoding (UTF-8)');
+                    appendToLog('Starting text data read loop...');
+                    readData(reader);
+                }
                 
                 // Log the connection parameters
                 appendToLog(`Connected with ${baudRate} baud, ${dataBits}${parity.charAt(0).toUpperCase()}${stopBits}`);
@@ -357,31 +382,63 @@
             try {
                 // Buffer to accumulate data until we get a complete measurement
                 let buffer = '';
+                let lastDataTime = Date.now();
+                let receivedAnyData = false;
+                
+                appendToLog('Started reading data from device...');
                 
                 while (true) {
                     const { value, done } = await reader.read();
                     
                     if (done) {
                         // Reader has been cancelled
+                        appendToLog('Data reading stopped: reader closed');
                         break;
                     }
                     
-                    // Add new data to buffer
-                    buffer += value;
-                    
-                    // Look for line terminators (CR or LF or both)
-                    const lines = buffer.split(/\r?\n/);
-                    
-                    // Process all complete lines
-                    if (lines.length > 1) {
-                        for (let i = 0; i < lines.length - 1; i++) {
-                            if (lines[i].trim().length > 0) {
-                                processData(lines[i]);
+                    if (value) {
+                        receivedAnyData = true;
+                        lastDataTime = Date.now();
+                        appendToLog(`Raw chunk received: "${value}" (${value.length} chars)`);
+                        
+                        // Add new data to buffer
+                        buffer += value;
+                        
+                        // Look for line terminators (CR or LF or both)
+                        const lines = buffer.split(/\r?\n/);
+                        
+                        // Process all complete lines
+                        if (lines.length > 1) {
+                            appendToLog(`Processing ${lines.length-1} complete lines`);
+                            for (let i = 0; i < lines.length - 1; i++) {
+                                if (lines[i].trim().length > 0) {
+                                    processData(lines[i]);
+                                } else {
+                                    appendToLog('Empty line received, skipping');
+                                }
+                            }
+                            
+                            // Keep the last (potentially incomplete) line in the buffer
+                            buffer = lines[lines.length - 1];
+                            if (buffer.length > 0) {
+                                appendToLog(`Keeping ${buffer.length} chars in buffer: "${buffer}"`);
+                            }
+                        } else {
+                            appendToLog(`No complete lines yet, buffer: "${buffer}"`);
+                            
+                            // If buffer contains data but no newline for some time, process it anyway
+                            if (buffer.length > 0 && Date.now() - lastDataTime > 1000) {
+                                appendToLog('Buffer contains data but no newline for 1 second, processing anyway');
+                                processData(buffer);
+                                buffer = '';
                             }
                         }
-                        
-                        // Keep the last (potentially incomplete) line in the buffer
-                        buffer = lines[lines.length - 1];
+                    } else {
+                        // If we've been connected but haven't received data for a while, log it
+                        if (receivedAnyData && Date.now() - lastDataTime > 5000) {
+                            appendToLog('No data received for 5 seconds...');
+                            lastDataTime = Date.now(); // Reset to avoid spam
+                        }
                     }
                 }
             } catch (error) {
@@ -390,13 +447,123 @@
             } finally {
                 // Release the lock on the reader
                 reader.releaseLock();
+                appendToLog('Reader lock released');
             }
         }
         
-        // Process received data
+        // Process binary data from the gauge
+        async function readBinaryData(reader) {
+            try {
+                const packetSize = 6; // Assuming 24 bits organized in 6 nibbles (based on project description)
+                let buffer = new Uint8Array(0);
+                let lastProcessTime = Date.now();
+                let bytesReceived = 0;
+                
+                appendToLog('Started reading binary data from device...');
+                
+                while (true) {
+                    const { value, done } = await reader.read();
+                    
+                    if (done) {
+                        appendToLog('Binary reader closed');
+                        break;
+                    }
+                    
+                    if (value) {
+                        bytesReceived += value.length;
+                        // Convert bytes to hex for logging
+                        const hexData = Array.from(value).map(b => b.toString(16).padStart(2, '0')).join(' ');
+                        appendToLog(`Received ${value.length} bytes (${bytesReceived} total) - Hex: ${hexData}`);
+                        
+                        // Concatenate with existing buffer
+                        const newBuffer = new Uint8Array(buffer.length + value.length);
+                        newBuffer.set(buffer);
+                        newBuffer.set(value, buffer.length);
+                        buffer = newBuffer;
+                        
+                        // Process complete packets if we have enough data
+                        while (buffer.length >= packetSize) {
+                            const packet = buffer.slice(0, packetSize);
+                            processPacket(packet);
+                            
+                            // Remove the processed packet from buffer
+                            buffer = buffer.slice(packetSize);
+                        }
+                        
+                        lastProcessTime = Date.now();
+                    }
+                    
+                    // Process any partial packet after a timeout
+                    if (buffer.length > 0 && Date.now() - lastProcessTime > 1000) {
+                        appendToLog(`Processing partial packet after timeout: ${buffer.length} bytes`);
+                        processPacket(buffer);
+                        buffer = new Uint8Array(0);
+                        lastProcessTime = Date.now();
+                    }
+                }
+            } catch (error) {
+                console.error('Error reading binary data:', error);
+                appendToLog(`Error reading binary data: ${error.message}`);
+            } finally {
+                reader.releaseLock();
+                appendToLog('Binary reader lock released');
+            }
+        }
+        
+        // Process a packet of binary data
+        function processPacket(packet) {
+            try {
+                // Convert to hex for logging
+                const hexData = Array.from(packet).map(b => b.toString(16).padStart(2, '0')).join(' ');
+                appendToLog(`Processing packet: ${hexData}`);
+                
+                // Extract the value from the packet
+                // This is a basic implementation - you may need to adjust based on the actual protocol
+                let value = 0;
+                let multiplier = 1;
+                
+                // Look for byte patterns that might represent a measurement
+                // First, try to interpret as a 16-bit or 24-bit integer
+                if (packet.length >= 2) {
+                    // Try as 16-bit (assuming last 2 bytes contain the value)
+                    value = (packet[packet.length-2] << 8) | packet[packet.length-1];
+                    
+                    // If the value is too large, it might need to be divided
+                    if (value > 1000) {
+                        multiplier = 0.01; // Assume 2 decimal places
+                    }
+                    
+                    let adjustedValue = value * multiplier - offset;
+                    
+                    // Update the gauge only if the value seems reasonable
+                    if (adjustedValue >= -100 && adjustedValue <= 100) {
+                        appendToLog(`Extracted value: ${value}, adjusted: ${adjustedValue} ${currentUnit}`);
+                        updateGaugeDisplay(adjustedValue, currentUnit);
+                        
+                        // Add to data array for export
+                        dataArray.push({
+                            timestamp: new Date().toISOString(),
+                            value: adjustedValue,
+                            unit: currentUnit,
+                            raw: hexData
+                        });
+                    } else {
+                        appendToLog(`Value out of reasonable range: ${adjustedValue}`);
+                    }
+                } else {
+                    appendToLog('Packet too small to extract value');
+                }
+            } catch (error) {
+                console.error('Error processing packet:', error);
+                appendToLog(`Error processing packet: ${error.message}`);
+            }
+        }
+        
+        // Process received text data
         function processData(data) {
-            // Log raw data
-            appendToLog(`Received: ${data}`);
+            // Log raw data with hex representation to help debugging
+            const hexData = Array.from(data).map(c => c.charCodeAt(0).toString(16).padStart(2, '0')).join(' ');
+            appendToLog(`Received: "${data}" (Hex: ${hexData})`);
             
             // Try to parse the measurement
             try {
@@ -406,12 +573,16 @@
                 // Strip any non-numeric characters except for decimal point and minus sign
                 const cleanedData = data.replace(/[^\d.-]/g, '');
                 
+                appendToLog(`Cleaned data: "${cleanedData}"`);
+                
                 if (cleanedData.length > 0) {
                     const value = parseFloat(cleanedData);
+                    appendToLog(`Parsed value: ${value}`);
                     
                     if (!isNaN(value)) {
                         // Apply offset (for zero function)
                         const adjustedValue = value - offset;
+                        appendToLog(`Adjusted value (with offset ${offset}): ${adjustedValue} ${currentUnit}`);
                         
                         // Update the gauge display
                         updateGaugeDisplay(adjustedValue, currentUnit);
@@ -422,10 +593,15 @@
                             value: adjustedValue,
                             unit: currentUnit
                         });
+                    } else {
+                        appendToLog(`Warning: Could not parse "${cleanedData}" as a number`);
                     }
+                } else {
+                    appendToLog(`Warning: No numeric data found in "${data}"`);
                 }
             } catch (error) {
                 console.error('Error parsing data:', error);
+                appendToLog(`Error parsing data: ${error.message}`);
             }
         }
         
@@ -441,6 +617,9 @@
             const clampedValue = Math.max(minValue, Math.min(maxValue, value));
             const angle = ((clampedValue - minValue) / (maxValue - minValue) * 180) - 90;
             gaugeNeedle.style.transform = `translateX(-50%) rotate(${angle}deg)`;
+            
+            // Log gauge update for debugging
+            appendToLog(`Updated gauge display: ${value.toFixed(3)} ${unit}, needle angle: ${angle.toFixed(1)}°`);
         }
         
         // Disconnect from the device
@@ -542,11 +721,26 @@
         
         // Append message to data log
         function appendToLog(message) {
-            const timestamp = new Date().toLocaleTimeString();
+            const timestamp = new Date().toLocaleTimeString('en-US', {hour12: false, fractionalSecondDigits: 3});
             const logEntry = document.createElement('div');
             logEntry.textContent = `[${timestamp}] ${message}`;
+            
+            // Color coding for different message types
+            if (message.includes('Error')) {
+                logEntry.style.color = '#d9534f';
+            } else if (message.includes('Warning')) {
+                logEntry.style.color = '#f0ad4e';
+            } else if (message.includes('Parsed value') || message.includes('Adjusted value')) {
+                logEntry.style.color = '#5cb85c';
+            } else if (message.includes('Received:')) {
+                logEntry.style.color = '#5bc0de';
+            }
+            
             dataLog.appendChild(logEntry);
             dataLog.scrollTop = dataLog.scrollHeight;
+            
+            // Also log to console for debugging
+            console.log(`[${timestamp}] ${message}`);
         }
         
         // Initial log message

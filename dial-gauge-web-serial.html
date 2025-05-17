@@ -248,6 +248,7 @@
             <div class="controls">
                 <button id="zero-button" disabled>Zero Gauge</button>
                 <button id="unit-toggle" disabled>Toggle Unit (mm/in)</button>
+                <button id="reset-memory-button" disabled>Reset Memory</button>
             </div>
         </div>
         
@@ -275,6 +276,7 @@
         const unitToggleButton = document.getElementById('unit-toggle');
         const gaugeValue = document.getElementById('gauge-value');
         const gaugeNeedle = document.querySelector('.gauge-needle');
+        const resetMemoryButton = document.getElementById('reset-memory-button');
         
         // Serial port settings elements
         const baudRateSelect = document.getElementById('baud-rate');
@@ -679,6 +681,9 @@
         let recentMeasurements = [];
         const MAX_RECENT_MEASUREMENTS = 5;
         
+        // Flag to track if we've received negative values
+        let hasReceivedNegativeValue = false;
+        
         // Process a packet of binary data
         function processPacket(packet) {
             try {
@@ -745,11 +750,26 @@
                         if (!isNaN(numValue)) {
                             // Convert to mm by dividing by 1000
                             const measuredValue = numValue / 1000;
+                            
+                            // Track that we've seen a negative value
+                            if (measuredValue < 0) {
+                                if (!hasReceivedNegativeValue) {
+                                    appendToLog(`INFO: First negative value detected: ${measuredValue.toFixed(3)}mm`);
+                                    hasReceivedNegativeValue = true;
+                                    
+                                    // Clear recent measurements when transitioning to negative
+                                    // This helps avoid the consistency filter rejecting the transition
+                                    recentMeasurements = [];
+                                    appendToLog(`INFO: Cleared measurement history due to sign change`);
+                                }
+                            }
+                            
                             interpretations.push({
                                 method: "Negative format (÷1000)", 
                                 rawValue: numValue,
                                 adjustedValue: measuredValue - offset,
-                                confidence: "very high" // Highest confidence for negative format
+                                confidence: "very high", // Highest confidence for negative format
+                                isNegative: true
                             });
                         }
                     } else if (textData.startsWith('SPECIAL_FORMAT:')) {
@@ -761,11 +781,22 @@
                         if (!isNaN(numValue)) {
                             // Convert to mm by dividing by 1000
                             const measuredValue = numValue / 1000;
+                            
+                            // Check if we're transitioning from negative to positive
+                            if (measuredValue >= 0 && hasReceivedNegativeValue && 
+                                recentMeasurements.length > 0 && recentMeasurements[recentMeasurements.length-1] < 0) {
+                                appendToLog(`INFO: Transitioning from negative to positive: ${measuredValue.toFixed(3)}mm`);
+                                // Clear recent measurements to allow the transition
+                                recentMeasurements = [];
+                                appendToLog(`INFO: Cleared measurement history due to sign change (neg->pos)`);
+                            }
+                            
                             interpretations.push({
                                 method: "Special format (÷1000)", 
                                 rawValue: numValue,
                                 adjustedValue: measuredValue - offset,
-                                confidence: "very high" // Highest confidence for this specific format
+                                confidence: "very high", // Highest confidence for this specific format
+                                isNegative: false
                             });
                         }
                     } 
@@ -894,13 +925,33 @@
                         appendToLog(`  - ${interp.method}: raw=${interp.rawValue}, value=${interp.adjustedValue.toFixed(3)} ${currentUnit} (confidence: ${interp.confidence})`);
                     });
                     
-                    // Sort interpretations by confidence
+                    // Sort interpretations by confidence and prioritize negative values if we've seen them before
                     const confidenceOrder = {"very high": 4, "high": 3, "medium": 2, "low": 1};
                     interpretations.sort((a, b) => {
+                        // First check: if we've seen negative values before, prioritize negative interpretations
+                        if (hasReceivedNegativeValue) {
+                            // If last measurement was negative, prioritize negative values
+                            if (recentMeasurements.length > 0 && recentMeasurements[recentMeasurements.length-1] < 0) {
+                                const aIsNegative = a.isNegative === true || a.adjustedValue < 0;
+                                const bIsNegative = b.isNegative === true || b.adjustedValue < 0;
+                                
+                                if (aIsNegative && !bIsNegative) return -1;
+                                if (!aIsNegative && bIsNegative) return 1;
+                            }
+                        }
+                        
+                        // If both have same negativity status or we don't have negative history,
+                        // then sort by confidence
                         return confidenceOrder[b.confidence] - confidenceOrder[a.confidence];
                     });
                     
+                    // Get the best interpretation
                     const bestInterp = interpretations[0];
+                    
+                    // Log the selection logic for debugging
+                    if (bestInterp.adjustedValue < 0 || bestInterp.isNegative) {
+                        appendToLog(`INFO: Selected negative interpretation: ${bestInterp.method} (${bestInterp.adjustedValue.toFixed(3)})`);
+                    }
                     
                     // Check if the value is consistent with recent measurements
                     const consistentValue = isConsistentMeasurement(bestInterp.adjustedValue);
@@ -948,6 +999,16 @@
                 return true; // First measurement is always accepted
             }
             
+            // Detect sign change between last measurement and current 
+            const lastMeasurement = recentMeasurements[recentMeasurements.length - 1];
+            const isSignChange = (value < 0 && lastMeasurement >= 0) || (value >= 0 && lastMeasurement < 0);
+            
+            // If there's a sign change, accept it and log it clearly
+            if (isSignChange) {
+                appendToLog(`INFO: Sign change detected (${lastMeasurement.toFixed(3)} → ${value.toFixed(3)}), accepting new value`);
+                return true;
+            }
+            
             // Check if the value is close to the recent measurements
             const isDifferentFromAll = recentMeasurements.every(recentValue => {
                 const diff = Math.abs(value - recentValue);
@@ -959,6 +1020,24 @@
             if ((value < 0 || Math.abs(value) < 0.1) && recentMeasurements.some(v => v < 0 || Math.abs(v) < 0.1)) {
                 appendToLog(`INFO: Applying special consistency rules for negative/zero values: ${value.toFixed(3)}`);
                 return true; // Accept negative values if we've seen negative values before
+            }
+            
+            // For negative values, use a different threshold for consistency
+            if (value < 0) {
+                // Only check recent negative values
+                const recentNegatives = recentMeasurements.filter(v => v < 0);
+                if (recentNegatives.length > 0) {
+                    const isDifferentFromNegatives = recentNegatives.every(recentValue => {
+                        const diff = Math.abs(value - recentValue);
+                        // Use a wider threshold for negative values
+                        return diff > 2.0; // Larger threshold for negative jumps
+                    });
+                    
+                    if (!isDifferentFromNegatives) {
+                        appendToLog(`INFO: Negative value ${value.toFixed(3)} is consistent with recent negative measurements`);
+                        return true;
+                    }
+                }
             }
             
             // Log consistency check results
@@ -1031,8 +1110,16 @@
         
         // Update the gauge display
         function updateGaugeDisplay(value, unit) {
-            // Update text display
-            gaugeValue.textContent = `${value.toFixed(3)} ${unit}`;
+            // Update text display with special handling for negative values
+            const formattedValue = value < 0 ? value.toFixed(3) : value.toFixed(3);
+            gaugeValue.textContent = `${formattedValue} ${unit}`;
+            
+            // Make negative values more visually distinct
+            if (value < 0) {
+                gaugeValue.style.color = '#d9534f'; // Red for negative
+            } else {
+                gaugeValue.style.color = '#333'; // Default color for positive/zero
+            }
             
             // Update needle position (rotate between -90 and 90 degrees based on value)
             // Assuming a range of -10 to +10 for the gauge, adjust as needed
@@ -1043,7 +1130,7 @@
             gaugeNeedle.style.transform = `translateX(-50%) rotate(${angle}deg)`;
             
             // Log gauge update for debugging
-            appendToLog(`Updated gauge display: ${value.toFixed(3)} ${unit}, needle angle: ${angle.toFixed(1)}°`);
+            appendToLog(`Updated gauge display: ${formattedValue} ${unit}, needle angle: ${angle.toFixed(1)}°`);
         }
         
         // Disconnect from the device

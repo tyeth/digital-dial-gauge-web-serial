@@ -492,14 +492,29 @@
                             const textData = new TextDecoder().decode(value).trim();
                             appendToLog(`Raw ASCII data: "${textData}"`);
                             
-                            // Look for well-formed decimal values (e.g., matching "14.862")
-                            const decimalMatches = textData.match(/\d+\.\d{3}/g);
+                            // Look for well-formed decimal values (e.g., matching "14.862" or "-009888")
+                            // First check for explicitly formatted decimals like "14.862"
+                            const decimalMatches = textData.match(/[-]?\d+\.\d{3}/g);
                             if (decimalMatches && decimalMatches.length > 0) {
                                 appendToLog(`INFO: Found decimal values in raw data: ${decimalMatches.join(', ')}`);
                                 
                                 // Process each match as a separate reading
                                 decimalMatches.forEach(match => {
                                     const packet = new TextEncoder().encode(match);
+                                    processPacket(packet);
+                                    lastPacketTime = Date.now();
+                                });
+                            }
+                            
+                            // Now check for formats like "-009888" which should be interpreted as -9.888mm
+                            const specialFormats = textData.match(/[-]?\d{6}/g);
+                            if (specialFormats && specialFormats.length > 0) {
+                                appendToLog(`INFO: Found special format values in raw data: ${specialFormats.join(', ')}`);
+                                
+                                // Process each special format as a reading with appropriate scaling
+                                specialFormats.forEach(match => {
+                                    // Create a packet with metadata to indicate this is a special format
+                                    const packet = new TextEncoder().encode(`SPECIAL_FORMAT:${match}`);
                                     processPacket(packet);
                                     lastPacketTime = Date.now();
                                 });
@@ -557,7 +572,9 @@
                             // Check if there's anything that looks like a decimal value in the buffer
                             try {
                                 const bufferText = new TextDecoder().decode(buffer);
-                                const decimalMatch = bufferText.match(/\d+\.\d{3}/);
+                                
+                                // Check for standard decimal format
+                                const decimalMatch = bufferText.match(/[-]?\d+\.\d{3}/);
                                 if (decimalMatch) {
                                     appendToLog(`INFO: Found decimal value "${decimalMatch[0]}" in buffer fragment`);
                                     const packet = new TextEncoder().encode(decimalMatch[0]);
@@ -568,6 +585,22 @@
                                     if (matchIndex >= 0) {
                                         const endIndex = matchIndex + decimalMatch[0].length;
                                         buffer = buffer.slice(endIndex);
+                                    }
+                                } 
+                                // Also check for "-009888" format which should be interpreted as -9.888mm
+                                else {
+                                    const specialMatch = bufferText.match(/[-]?\d{6}/);
+                                    if (specialMatch) {
+                                        appendToLog(`INFO: Found special format value "${specialMatch[0]}" in buffer fragment`);
+                                        const packet = new TextEncoder().encode(`SPECIAL_FORMAT:${specialMatch[0]}`);
+                                        processPacket(packet);
+                                        
+                                        // Clear the processed portion from buffer
+                                        const matchIndex = bufferText.indexOf(specialMatch[0]);
+                                        if (matchIndex >= 0) {
+                                            const endIndex = matchIndex + specialMatch[0].length;
+                                            buffer = buffer.slice(endIndex);
+                                        }
                                     }
                                     
                                     lastPacketTime = Date.now();
@@ -682,45 +715,81 @@
                 let interpretations = [];
                 
                 // Strategy 1: As ASCII string - HIGHER CONFIDENCE based on user feedback
-                // Specifically for values like 14.862
+                // Specifically for values like 14.862 or -009888
                 try {
                     const textData = new TextDecoder().decode(packet).trim();
                     
-                    // Look specifically for well-formed decimal values (e.g., 14.862)
-                    const wellFormedMatch = textData.match(/\d+\.\d{3}/);
-                    if (wellFormedMatch) {
-                        const wellFormedValue = parseFloat(wellFormedMatch[0]);
-                        if (!isNaN(wellFormedValue)) {
+                    // Check for special format marker (from the data scanning)
+                    if (textData.startsWith('SPECIAL_FORMAT:')) {
+                        const specialValue = textData.substring('SPECIAL_FORMAT:'.length);
+                        appendToLog(`INFO: Processing special format value: ${specialValue}`);
+                        
+                        // Format like "-009888" should be interpreted as -9.888mm
+                        const numValue = parseInt(specialValue, 10);
+                        if (!isNaN(numValue)) {
+                            // Convert to mm by dividing by 1000
+                            const measuredValue = numValue / 1000;
                             interpretations.push({
-                                method: "ASCII decimal", 
-                                rawValue: wellFormedValue,
-                                adjustedValue: wellFormedValue - offset,
-                                confidence: "very high" // Highest confidence for exact format match
+                                method: "Special format (÷1000)", 
+                                rawValue: numValue,
+                                adjustedValue: measuredValue - offset,
+                                confidence: "very high" // Highest confidence for this specific format
                             });
                         }
-                    } else {
-                        // Fallback to general numeric extraction
-                        const cleanedText = textData.replace(/[^\d.-]/g, '');
-                        if (cleanedText.length > 0) {
-                            // Special case for values that might be partial (like '148')
-                            // which could be 14.8 or a partial 14.8xx
-                            if (cleanedText.length === 3 && !cleanedText.includes('.')) {
-                                const possibleDecimalValue = parseFloat(cleanedText) / 10;
+                    } 
+                    // Look specifically for well-formed decimal values (e.g., 14.862)
+                    else {
+                        const wellFormedMatch = textData.match(/[-]?\d+\.\d{3}/);
+                        if (wellFormedMatch) {
+                            const wellFormedValue = parseFloat(wellFormedMatch[0]);
+                            if (!isNaN(wellFormedValue)) {
                                 interpretations.push({
-                                    method: "ASCII partial", 
-                                    rawValue: parseFloat(cleanedText),
-                                    adjustedValue: possibleDecimalValue - offset,
-                                    confidence: "medium" // Medium confidence for partial match
+                                    method: "ASCII decimal", 
+                                    rawValue: wellFormedValue,
+                                    adjustedValue: wellFormedValue - offset,
+                                    confidence: "very high" // Highest confidence for exact format match
                                 });
-                            } else {
-                                const textValue = parseFloat(cleanedText);
-                                if (!isNaN(textValue)) {
+                            }
+                        } else {
+                            // Check for 6-digit format that should be divided by 1000 (e.g., -009888 → -9.888)
+                            const sixDigitMatch = textData.match(/[-]?\d{6}/);
+                            if (sixDigitMatch) {
+                                const numValue = parseInt(sixDigitMatch[0], 10);
+                                if (!isNaN(numValue)) {
+                                    // Convert to mm by dividing by 1000
+                                    const measuredValue = numValue / 1000;
                                     interpretations.push({
-                                        method: "ASCII text", 
-                                        rawValue: textValue,
-                                        adjustedValue: textValue - offset,
-                                        confidence: "medium"
+                                        method: "6-digit format (÷1000)", 
+                                        rawValue: numValue,
+                                        adjustedValue: measuredValue - offset,
+                                        confidence: "very high" // High confidence for this specific format
                                     });
+                                }
+                            } else {
+                                // Fallback to general numeric extraction
+                                const cleanedText = textData.replace(/[^\d.-]/g, '');
+                                if (cleanedText.length > 0) {
+                                    // Special case for values that might be partial (like '148')
+                                    // which could be 14.8 or a partial 14.8xx
+                                    if (cleanedText.length === 3 && !cleanedText.includes('.')) {
+                                        const possibleDecimalValue = parseFloat(cleanedText) / 10;
+                                        interpretations.push({
+                                            method: "ASCII partial", 
+                                            rawValue: parseFloat(cleanedText),
+                                            adjustedValue: possibleDecimalValue - offset,
+                                            confidence: "medium" // Medium confidence for partial match
+                                        });
+                                    } else {
+                                        const textValue = parseFloat(cleanedText);
+                                        if (!isNaN(textValue)) {
+                                            interpretations.push({
+                                                method: "ASCII text", 
+                                                rawValue: textValue,
+                                                adjustedValue: textValue - offset,
+                                                confidence: "medium"
+                                            });
+                                        }
+                                    }
                                 }
                             }
                         }

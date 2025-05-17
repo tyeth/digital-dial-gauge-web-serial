@@ -94,6 +94,7 @@
     // Buffer for incoming serial data
     let serialBuffer = '';
     let pendingMinus = false;
+    const EXPECTED_DIGIT_LENGTH = 6; // adjust if your gauge sends a different length
     async function readSerialLoop() {
       const decoder = new TextDecoder();
       reader = port.readable.getReader();
@@ -119,29 +120,34 @@
               if (ch === '\r' || ch === '\n' || ch === '\u0012') {
                 // End of message, try to parse
                 if (serialBuffer.length > 0) {
-                  // Remove leading zeros
-                  let numStr = serialBuffer.replace(/^0+/, '');
-                  if (numStr.length === 0) numStr = '0';
-                  // Insert decimal point before last 3 digits if needed
-                  if (numStr.length > 3) {
-                    numStr = numStr.slice(0, -3) + '.' + numStr.slice(-3);
-                  } else if (numStr.length === 3) {
-                    numStr = '0.' + numStr;
-                  } else if (numStr.length === 2) {
-                    numStr = '0.0' + numStr;
-                  } else if (numStr.length === 1) {
-                    numStr = '0.00' + numStr;
-                  }
-                  if (pendingMinus) {
-                    numStr = '-' + numStr;
-                  }
-                  const mmVal = parseFloat(numStr);
-                  if (!isNaN(mmVal)) {
-                    updateValue(mmVal);
-                    logData.push({ timestamp: new Date().toISOString(), value: mmVal });
-                    logLine(`[PARSED] ${numStr} mm`);
+                  // Only parse if the buffer is the expected length
+                  if (serialBuffer.length === EXPECTED_DIGIT_LENGTH) {
+                    // Remove leading zeros
+                    let numStr = serialBuffer.replace(/^0+/, '');
+                    if (numStr.length === 0) numStr = '0';
+                    // Insert decimal point before last 3 digits if needed
+                    if (numStr.length > 3) {
+                      numStr = numStr.slice(0, -3) + '.' + numStr.slice(-3);
+                    } else if (numStr.length === 3) {
+                      numStr = '0.' + numStr;
+                    } else if (numStr.length === 2) {
+                      numStr = '0.0' + numStr;
+                    } else if (numStr.length === 1) {
+                      numStr = '0.00' + numStr;
+                    }
+                    if (pendingMinus) {
+                      numStr = '-' + numStr;
+                    }
+                    const mmVal = parseFloat(numStr);
+                    if (!isNaN(mmVal)) {
+                      updateValue(mmVal);
+                      logData.push({ timestamp: new Date().toISOString(), value: mmVal });
+                      logLine(`[PARSED] ${numStr} mm`);
+                    } else {
+                      logLine('[WARN] Could not parse buffered value: ' + JSON.stringify(serialBuffer));
+                    }
                   } else {
-                    logLine('[WARN] Could not parse buffered value: ' + JSON.stringify(serialBuffer));
+                    logLine(`[INFO] Ignored buffer (unexpected length ${serialBuffer.length}): ${JSON.stringify(serialBuffer)}`);
                   }
                 }
                 serialBuffer = '';

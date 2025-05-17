@@ -454,10 +454,15 @@
         // Process binary data from the gauge
         async function readBinaryData(reader) {
             try {
-                const packetSize = 6; // Assuming 24 bits organized in 6 nibbles (based on project description)
+                // Try different packet sizes based on what we see in the data
+                let packetSize = 6; // Start with 6 based on project description (24 bits in 6 nibbles)
+                let autoPacketSize = true; // Auto-detect packet size based on data patterns
                 let buffer = new Uint8Array(0);
                 let lastProcessTime = Date.now();
                 let bytesReceived = 0;
+                let patternSizes = {}; // Track frequency of different data pattern sizes
+                let lastPacketTime = Date.now();
+                let noDataTime = 0;
                 
                 appendToLog('Started reading binary data from device...');
                 
@@ -469,11 +474,34 @@
                         break;
                     }
                     
-                    if (value) {
+                    if (value && value.length > 0) {
                         bytesReceived += value.length;
+                        
                         // Convert bytes to hex for logging
                         const hexData = Array.from(value).map(b => b.toString(16).padStart(2, '0')).join(' ');
                         appendToLog(`Received ${value.length} bytes (${bytesReceived} total) - Hex: ${hexData}`);
+                        
+                        // Look for recurring patterns in data to auto-detect packet size
+                        if (autoPacketSize && value.length > 3) {
+                            // Look for repeating bytes that might indicate packet boundaries
+                            for (let i = 1; i < value.length - 2; i++) {
+                                // Check if we have a potential marker byte
+                                if (value[i] === value[i+1] && (i+2 < value.length && value[i] === value[i+2])) {
+                                    const possibleSize = i;
+                                    if (possibleSize > 1 && possibleSize <= 24) { // Only consider reasonable sizes
+                                        patternSizes[possibleSize] = (patternSizes[possibleSize] || 0) + 1;
+                                        
+                                        // If we've seen this pattern enough times, use it
+                                        if (patternSizes[possibleSize] >= 3) {
+                                            if (packetSize !== possibleSize) {
+                                                appendToLog(`INFO: Auto-detected packet size: ${possibleSize} bytes (previously ${packetSize})`);
+                                                packetSize = possibleSize;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         
                         // Concatenate with existing buffer
                         const newBuffer = new Uint8Array(buffer.length + value.length);
@@ -482,28 +510,64 @@
                         buffer = newBuffer;
                         
                         // Process complete packets if we have enough data
+                        let packetsProcessed = 0;
                         while (buffer.length >= packetSize) {
                             const packet = buffer.slice(0, packetSize);
                             processPacket(packet);
+                            packetsProcessed++;
                             
                             // Remove the processed packet from buffer
                             buffer = buffer.slice(packetSize);
+                            lastPacketTime = Date.now();
+                        }
+                        
+                        if (packetsProcessed > 0) {
+                            appendToLog(`INFO: Processed ${packetsProcessed} complete packets`);
                         }
                         
                         lastProcessTime = Date.now();
+                        noDataTime = 0;
+                    } else {
+                        // Track periods with no data
+                        const currentTime = Date.now();
+                        noDataTime = currentTime - lastProcessTime;
+                        
+                        // Log every 5 seconds of no data
+                        if (noDataTime > 5000 && noDataTime % 5000 < 100) {
+                            appendToLog(`INFO: No data received for ${Math.floor(noDataTime/1000)} seconds`);
+                        }
                     }
                     
                     // Process any partial packet after a timeout
                     if (buffer.length > 0 && Date.now() - lastProcessTime > 1000) {
-                        appendToLog(`Processing partial packet after timeout: ${buffer.length} bytes`);
+                        appendToLog(`INFO: Processing partial packet after timeout: ${buffer.length} bytes`);
                         processPacket(buffer);
                         buffer = new Uint8Array(0);
                         lastProcessTime = Date.now();
                     }
+                    
+                    // Allow override of auto-detected packet size if nothing is working
+                    if (Date.now() - lastPacketTime > 10000 && buffer.length > 0) {
+                        // Try different packet sizes if auto-detection isn't working
+                        const alternativeSizes = [2, 3, 4, 6, 8];
+                        const nextSize = alternativeSizes.find(size => size !== packetSize && buffer.length >= size) || packetSize;
+                        
+                        if (nextSize !== packetSize) {
+                            appendToLog(`WARNING: No valid data detected for 10s. Trying alternative packet size: ${nextSize} bytes`);
+                            packetSize = nextSize;
+                            // Process with new size
+                            if (buffer.length >= packetSize) {
+                                const packet = buffer.slice(0, packetSize);
+                                processPacket(packet);
+                                buffer = buffer.slice(packetSize);
+                                lastPacketTime = Date.now();
+                            }
+                        }
+                    }
                 }
             } catch (error) {
                 console.error('Error reading binary data:', error);
-                appendToLog(`Error reading binary data: ${error.message}`);
+                appendToLog(`ERROR: Reading binary data: ${error.message}`);
             } finally {
                 reader.releaseLock();
                 appendToLog('Binary reader lock released');
@@ -517,45 +581,154 @@
                 const hexData = Array.from(packet).map(b => b.toString(16).padStart(2, '0')).join(' ');
                 appendToLog(`Processing packet: ${hexData}`);
                 
-                // Extract the value from the packet
-                // This is a basic implementation - you may need to adjust based on the actual protocol
-                let value = 0;
-                let multiplier = 1;
+                // Also display as binary for pattern recognition
+                const binData = Array.from(packet).map(b => b.toString(2).padStart(8, '0')).join(' ');
+                appendToLog(`Binary representation: ${binData}`);
                 
-                // Look for byte patterns that might represent a measurement
-                // First, try to interpret as a 16-bit or 24-bit integer
+                // Check for common patterns that might indicate special messages or states
+                let patternFound = false;
+                
+                // Look for repeated bytes (might indicate idle or error state)
+                if (packet.length > 1) {
+                    const allSame = packet.every(b => b === packet[0]);
+                    if (allSame) {
+                        appendToLog(`PATTERN DETECTED: All bytes are identical (${packet[0].toString(16)})`);  
+                        patternFound = true;
+                    }
+                }
+                
+                // Look for incrementing/decrementing sequence (might be noise or handshake)
+                if (packet.length > 2) {
+                    let incrementing = true;
+                    let decrementing = true;
+                    
+                    for (let i = 1; i < packet.length; i++) {
+                        if (packet[i] !== packet[i-1] + 1) incrementing = false;
+                        if (packet[i] !== packet[i-1] - 1) decrementing = false;
+                    }
+                    
+                    if (incrementing) {
+                        appendToLog(`PATTERN DETECTED: Incrementing sequence`);  
+                        patternFound = true;
+                    }
+                    if (decrementing) {
+                        appendToLog(`PATTERN DETECTED: Decrementing sequence`);  
+                        patternFound = true;
+                    }
+                }
+                
+                // Extract the value from the packet using multiple strategies
+                // This is a basic implementation - you may need to adjust based on the actual protocol
+                let interpretations = [];
+                
+                // Strategy 1: As ASCII string (for devices sending text data with binary control chars)
+                try {
+                    const textData = new TextDecoder().decode(packet).trim();
+                    const cleanedText = textData.replace(/[^\d.-]/g, '');
+                    if (cleanedText.length > 0) {
+                        const textValue = parseFloat(cleanedText);
+                        if (!isNaN(textValue)) {
+                            interpretations.push({
+                                method: "ASCII text", 
+                                rawValue: textValue,
+                                adjustedValue: textValue - offset,
+                                confidence: "medium"
+                            });
+                        }
+                    }
+                } catch (e) {
+                    appendToLog(`INFO: Could not interpret as ASCII: ${e.message}`);
+                }
+                
+                // Strategy 2: As 16-bit integer (most common for digital instruments)
                 if (packet.length >= 2) {
-                    // Try as 16-bit (assuming last 2 bytes contain the value)
-                    value = (packet[packet.length-2] << 8) | packet[packet.length-1];
+                    // Try as 16-bit with different byte orders
+                    const value1 = (packet[packet.length-2] << 8) | packet[packet.length-1]; // big-endian
+                    const value2 = (packet[packet.length-1] << 8) | packet[packet.length-2]; // little-endian
                     
-                    // If the value is too large, it might need to be divided
-                    if (value > 1000) {
-                        multiplier = 0.01; // Assume 2 decimal places
-                    }
+                    // Test different scale factors
+                    const scales = [1, 0.1, 0.01, 0.001];
                     
-                    let adjustedValue = value * multiplier - offset;
-                    
-                    // Update the gauge only if the value seems reasonable
-                    if (adjustedValue >= -100 && adjustedValue <= 100) {
-                        appendToLog(`Extracted value: ${value}, adjusted: ${adjustedValue} ${currentUnit}`);
-                        updateGaugeDisplay(adjustedValue, currentUnit);
+                    scales.forEach(scale => {
+                        const adjustedValue1 = value1 * scale - offset;
+                        const adjustedValue2 = value2 * scale - offset;
                         
-                        // Add to data array for export
-                        dataArray.push({
-                            timestamp: new Date().toISOString(),
-                            value: adjustedValue,
-                            unit: currentUnit,
-                            raw: hexData
-                        });
-                    } else {
-                        appendToLog(`Value out of reasonable range: ${adjustedValue}`);
-                    }
+                        // If values are in reasonable range for a digital gauge
+                        if (adjustedValue1 >= -100 && adjustedValue1 <= 100) {
+                            interpretations.push({
+                                method: `16-bit BE ×${scale}`, 
+                                rawValue: value1,
+                                adjustedValue: adjustedValue1,
+                                confidence: scale === 0.01 ? "high" : "medium" // Most gauges use 0.01mm precision
+                            });
+                        }
+                        
+                        if (adjustedValue2 >= -100 && adjustedValue2 <= 100) {
+                            interpretations.push({
+                                method: `16-bit LE ×${scale}`, 
+                                rawValue: value2,
+                                adjustedValue: adjustedValue2,
+                                confidence: scale === 0.01 ? "high" : "medium"
+                            });
+                        }
+                    });
+                }
+                
+                // Strategy 3: As 24-bit value (mentioned in documentation)
+                if (packet.length >= 3) {
+                    // Try big-endian 24-bit
+                    const value = (packet[packet.length-3] << 16) | 
+                                (packet[packet.length-2] << 8) | 
+                                packet[packet.length-1];
+                    
+                    // Test different scale factors
+                    const scales = [0.001, 0.0001, 0.00001];
+                    
+                    scales.forEach(scale => {
+                        const adjustedValue = value * scale - offset;
+                        if (adjustedValue >= -100 && adjustedValue <= 100) {
+                            interpretations.push({
+                                method: `24-bit ×${scale}`, 
+                                rawValue: value,
+                                adjustedValue: adjustedValue,
+                                confidence: "medium"
+                            });
+                        }
+                    });
+                }
+                
+                // Log all interpretations
+                if (interpretations.length > 0) {
+                    appendToLog(`Found ${interpretations.length} possible interpretations:`);
+                    interpretations.forEach(interp => {
+                        appendToLog(`  - ${interp.method}: raw=${interp.rawValue}, value=${interp.adjustedValue.toFixed(3)} ${currentUnit} (confidence: ${interp.confidence})`);
+                    });
+                    
+                    // Choose best interpretation (highest confidence first, or first one if tied)
+                    const bestInterp = interpretations.sort((a, b) => {
+                        const confidenceOrder = {"high": 3, "medium": 2, "low": 1};
+                        return confidenceOrder[b.confidence] - confidenceOrder[a.confidence];
+                    })[0];
+                    
+                    appendToLog(`SELECTED interpretation: ${bestInterp.method} = ${bestInterp.adjustedValue.toFixed(3)} ${currentUnit}`);
+                    updateGaugeDisplay(bestInterp.adjustedValue, currentUnit);
+                    
+                    // Add to data array for export
+                    dataArray.push({
+                        timestamp: new Date().toISOString(),
+                        value: bestInterp.adjustedValue,
+                        unit: currentUnit,
+                        raw: hexData,
+                        method: bestInterp.method
+                    });
                 } else {
-                    appendToLog('Packet too small to extract value');
+                    if (!patternFound) {
+                        appendToLog(`WARNING: Could not interpret data - no valid measurements found`);
+                    }
                 }
             } catch (error) {
                 console.error('Error processing packet:', error);
-                appendToLog(`Error processing packet: ${error.message}`);
+                appendToLog(`ERROR: Processing packet failed: ${error.message}`);
             }
         }
         
@@ -726,14 +899,25 @@
             logEntry.textContent = `[${timestamp}] ${message}`;
             
             // Color coding for different message types
-            if (message.includes('Error')) {
-                logEntry.style.color = '#d9534f';
-            } else if (message.includes('Warning')) {
-                logEntry.style.color = '#f0ad4e';
-            } else if (message.includes('Parsed value') || message.includes('Adjusted value')) {
-                logEntry.style.color = '#5cb85c';
-            } else if (message.includes('Received:')) {
-                logEntry.style.color = '#5bc0de';
+            if (message.includes('ERROR:')) {
+                logEntry.style.color = '#d9534f'; // Red for errors
+                logEntry.style.fontWeight = 'bold';
+            } else if (message.includes('WARNING:')) {
+                logEntry.style.color = '#f0ad4e'; // Yellow for warnings
+                logEntry.style.fontWeight = 'bold';
+            } else if (message.includes('PATTERN DETECTED:')) {
+                logEntry.style.color = '#9467bd'; // Purple for pattern detection
+                logEntry.style.fontWeight = 'bold';
+            } else if (message.includes('SELECTED interpretation:')) {
+                logEntry.style.color = '#5cb85c'; // Green for selected value
+                logEntry.style.fontWeight = 'bold';
+            } else if (message.includes('INFO:')) {
+                logEntry.style.color = '#2ca02c'; // Dark green for info
+            } else if (message.includes('Received ') || message.includes('Processing packet:')) {
+                logEntry.style.color = '#5bc0de'; // Blue for received data
+            } else if (message.includes('Binary representation:')) {
+                logEntry.style.color = '#808080'; // Gray for binary data
+                logEntry.style.fontFamily = 'monospace';
             }
             
             dataLog.appendChild(logEntry);

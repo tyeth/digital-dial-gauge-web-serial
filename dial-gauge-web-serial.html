@@ -192,8 +192,8 @@
                         <option value="1200">1200</option>
                         <option value="2400">2400</option>
                         <option value="4800">4800</option>
-                        <option value="9600">9600</option>
-                        <option value="19200" selected>19200</option>
+                        <option value="9600" selected>9600</option>
+                        <option value="19200">19200</option>
                         <option value="38400">38400</option>
                         <option value="57600">57600</option>
                         <option value="115200">115200</option>
@@ -454,8 +454,10 @@
         // Process binary data from the gauge
         async function readBinaryData(reader) {
             try {
-                // Try different packet sizes based on what we see in the data
-                let packetSize = 6; // Start with 6 based on project description (24 bits in 6 nibbles)
+                // Since we know the gauge might be sending values like "14.862" with some 
+                // intermittent garbage values, let's look for ASCII strings
+                // But also keep the packet detection for binary data
+                let packetSize = 8; // Start with a larger packet size to capture more context
                 let autoPacketSize = true; // Auto-detect packet size based on data patterns
                 let buffer = new Uint8Array(0);
                 let lastProcessTime = Date.now();
@@ -465,6 +467,9 @@
                 let noDataTime = 0;
                 
                 appendToLog('Started reading binary data from device...');
+                
+                // Create two processing modes: scanning for ASCII decimal values and packet-based
+                const scanMode = { active: true, timeout: 500 }; // Scan for ASCII values with short timeout
                 
                 while (true) {
                     const { value, done } = await reader.read();
@@ -480,6 +485,28 @@
                         // Convert bytes to hex for logging
                         const hexData = Array.from(value).map(b => b.toString(16).padStart(2, '0')).join(' ');
                         appendToLog(`Received ${value.length} bytes (${bytesReceived} total) - Hex: ${hexData}`);
+                        
+                        // Try to interpret as ASCII text directly
+                        // This is especially for detecting values like "14.862"
+                        try {
+                            const textData = new TextDecoder().decode(value).trim();
+                            appendToLog(`Raw ASCII data: "${textData}"`);
+                            
+                            // Look for well-formed decimal values (e.g., matching "14.862")
+                            const decimalMatches = textData.match(/\d+\.\d{3}/g);
+                            if (decimalMatches && decimalMatches.length > 0) {
+                                appendToLog(`INFO: Found decimal values in raw data: ${decimalMatches.join(', ')}`);
+                                
+                                // Process each match as a separate reading
+                                decimalMatches.forEach(match => {
+                                    const packet = new TextEncoder().encode(match);
+                                    processPacket(packet);
+                                    lastPacketTime = Date.now();
+                                });
+                            }
+                        } catch (e) {
+                            // Just continue if text decoding fails
+                        }
                         
                         // Look for recurring patterns in data to auto-detect packet size
                         if (autoPacketSize && value.length > 3) {
@@ -525,6 +552,31 @@
                             appendToLog(`INFO: Processed ${packetsProcessed} complete packets`);
                         }
                         
+                        // Special handling for fragments that might contain a valid reading
+                        if (buffer.length > 0) {
+                            // Check if there's anything that looks like a decimal value in the buffer
+                            try {
+                                const bufferText = new TextDecoder().decode(buffer);
+                                const decimalMatch = bufferText.match(/\d+\.\d{3}/);
+                                if (decimalMatch) {
+                                    appendToLog(`INFO: Found decimal value "${decimalMatch[0]}" in buffer fragment`);
+                                    const packet = new TextEncoder().encode(decimalMatch[0]);
+                                    processPacket(packet);
+                                    
+                                    // Clear the processed portion from buffer
+                                    const matchIndex = bufferText.indexOf(decimalMatch[0]);
+                                    if (matchIndex >= 0) {
+                                        const endIndex = matchIndex + decimalMatch[0].length;
+                                        buffer = buffer.slice(endIndex);
+                                    }
+                                    
+                                    lastPacketTime = Date.now();
+                                }
+                            } catch (e) {
+                                // Continue if this fails
+                            }
+                        }
+                        
                         lastProcessTime = Date.now();
                         noDataTime = 0;
                     } else {
@@ -539,8 +591,8 @@
                     }
                     
                     // Process any partial packet after a timeout
-                    if (buffer.length > 0 && Date.now() - lastProcessTime > 1000) {
-                        appendToLog(`INFO: Processing partial packet after timeout: ${buffer.length} bytes`);
+                    if (buffer.length > 0 && Date.now() - lastProcessTime > scanMode.timeout) {
+                        appendToLog(`INFO: Processing buffer fragment after ${scanMode.timeout}ms timeout: ${buffer.length} bytes`);
                         processPacket(buffer);
                         buffer = new Uint8Array(0);
                         lastProcessTime = Date.now();
@@ -574,6 +626,10 @@
             }
         }
         
+        // Store recent valid measurements for filtering out noise
+        let recentMeasurements = [];
+        const MAX_RECENT_MEASUREMENTS = 5;
+        
         // Process a packet of binary data
         function processPacket(packet) {
             try {
@@ -594,6 +650,8 @@
                     if (allSame) {
                         appendToLog(`PATTERN DETECTED: All bytes are identical (${packet[0].toString(16)})`);  
                         patternFound = true;
+                        // This is likely not a measurement, skip further processing
+                        return;
                     }
                 }
                 
@@ -610,10 +668,12 @@
                     if (incrementing) {
                         appendToLog(`PATTERN DETECTED: Incrementing sequence`);  
                         patternFound = true;
+                        return;
                     }
                     if (decrementing) {
                         appendToLog(`PATTERN DETECTED: Decrementing sequence`);  
                         patternFound = true;
+                        return;
                     }
                 }
                 
@@ -621,19 +681,48 @@
                 // This is a basic implementation - you may need to adjust based on the actual protocol
                 let interpretations = [];
                 
-                // Strategy 1: As ASCII string (for devices sending text data with binary control chars)
+                // Strategy 1: As ASCII string - HIGHER CONFIDENCE based on user feedback
+                // Specifically for values like 14.862
                 try {
                     const textData = new TextDecoder().decode(packet).trim();
-                    const cleanedText = textData.replace(/[^\d.-]/g, '');
-                    if (cleanedText.length > 0) {
-                        const textValue = parseFloat(cleanedText);
-                        if (!isNaN(textValue)) {
+                    
+                    // Look specifically for well-formed decimal values (e.g., 14.862)
+                    const wellFormedMatch = textData.match(/\d+\.\d{3}/);
+                    if (wellFormedMatch) {
+                        const wellFormedValue = parseFloat(wellFormedMatch[0]);
+                        if (!isNaN(wellFormedValue)) {
                             interpretations.push({
-                                method: "ASCII text", 
-                                rawValue: textValue,
-                                adjustedValue: textValue - offset,
-                                confidence: "medium"
+                                method: "ASCII decimal", 
+                                rawValue: wellFormedValue,
+                                adjustedValue: wellFormedValue - offset,
+                                confidence: "very high" // Highest confidence for exact format match
                             });
+                        }
+                    } else {
+                        // Fallback to general numeric extraction
+                        const cleanedText = textData.replace(/[^\d.-]/g, '');
+                        if (cleanedText.length > 0) {
+                            // Special case for values that might be partial (like '148')
+                            // which could be 14.8 or a partial 14.8xx
+                            if (cleanedText.length === 3 && !cleanedText.includes('.')) {
+                                const possibleDecimalValue = parseFloat(cleanedText) / 10;
+                                interpretations.push({
+                                    method: "ASCII partial", 
+                                    rawValue: parseFloat(cleanedText),
+                                    adjustedValue: possibleDecimalValue - offset,
+                                    confidence: "medium" // Medium confidence for partial match
+                                });
+                            } else {
+                                const textValue = parseFloat(cleanedText);
+                                if (!isNaN(textValue)) {
+                                    interpretations.push({
+                                        method: "ASCII text", 
+                                        rawValue: textValue,
+                                        adjustedValue: textValue - offset,
+                                        confidence: "medium"
+                                    });
+                                }
+                            }
                         }
                     }
                 } catch (e) {
@@ -704,23 +793,42 @@
                         appendToLog(`  - ${interp.method}: raw=${interp.rawValue}, value=${interp.adjustedValue.toFixed(3)} ${currentUnit} (confidence: ${interp.confidence})`);
                     });
                     
-                    // Choose best interpretation (highest confidence first, or first one if tied)
-                    const bestInterp = interpretations.sort((a, b) => {
-                        const confidenceOrder = {"high": 3, "medium": 2, "low": 1};
+                    // Sort interpretations by confidence
+                    const confidenceOrder = {"very high": 4, "high": 3, "medium": 2, "low": 1};
+                    interpretations.sort((a, b) => {
                         return confidenceOrder[b.confidence] - confidenceOrder[a.confidence];
-                    })[0];
-                    
-                    appendToLog(`SELECTED interpretation: ${bestInterp.method} = ${bestInterp.adjustedValue.toFixed(3)} ${currentUnit}`);
-                    updateGaugeDisplay(bestInterp.adjustedValue, currentUnit);
-                    
-                    // Add to data array for export
-                    dataArray.push({
-                        timestamp: new Date().toISOString(),
-                        value: bestInterp.adjustedValue,
-                        unit: currentUnit,
-                        raw: hexData,
-                        method: bestInterp.method
                     });
+                    
+                    const bestInterp = interpretations[0];
+                    
+                    // Check if the value is consistent with recent measurements
+                    const consistentValue = isConsistentMeasurement(bestInterp.adjustedValue);
+                    
+                    // Only update the display if we have a consistent measurement or high confidence
+                    if (consistentValue || bestInterp.confidence === "very high" || bestInterp.confidence === "high") {
+                        // Update display and log
+                        appendToLog(`SELECTED interpretation: ${bestInterp.method} = ${bestInterp.adjustedValue.toFixed(3)} ${currentUnit}`);                        
+                        if (consistentValue) {
+                            appendToLog(`INFO: Measurement is consistent with recent values`);  
+                        }
+                        
+                        updateGaugeDisplay(bestInterp.adjustedValue, currentUnit);
+                        
+                        // Add to data array for export
+                        dataArray.push({
+                            timestamp: new Date().toISOString(),
+                            value: bestInterp.adjustedValue,
+                            unit: currentUnit,
+                            raw: hexData,
+                            method: bestInterp.method,
+                            consistent: consistentValue
+                        });
+                        
+                        // Add to recent measurements for consistency checking
+                        addToRecentMeasurements(bestInterp.adjustedValue);
+                    } else {
+                        appendToLog(`INFO: Skipping inconsistent measurement: ${bestInterp.adjustedValue.toFixed(3)} ${currentUnit}`);                        
+                    }
                 } else {
                     if (!patternFound) {
                         appendToLog(`WARNING: Could not interpret data - no valid measurements found`);
@@ -729,6 +837,31 @@
             } catch (error) {
                 console.error('Error processing packet:', error);
                 appendToLog(`ERROR: Processing packet failed: ${error.message}`);
+            }
+        }
+        
+        // Check if a measurement is consistent with recent values
+        function isConsistentMeasurement(value) {
+            if (recentMeasurements.length === 0) {
+                return true; // First measurement is always accepted
+            }
+            
+            // Check if the value is close to the recent measurements
+            const isDifferentFromAll = recentMeasurements.every(recentValue => {
+                const diff = Math.abs(value - recentValue);
+                // Allow small changes but reject large jumps
+                return diff > 1.0; // Threshold for what's considered a jump
+            });
+            
+            // Reject if the value is very different from all recent measurements
+            return !isDifferentFromAll;
+        }
+        
+        // Add a measurement to the recent measurements list
+        function addToRecentMeasurements(value) {
+            recentMeasurements.push(value);
+            if (recentMeasurements.length > MAX_RECENT_MEASUREMENTS) {
+                recentMeasurements.shift(); // Remove oldest
             }
         }
         

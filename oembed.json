@@ -1,0 +1,13 @@
+{
+  "version": "1.0",
+  "type": "rich",
+  "provider_name": "Digital Dial Gauge Web Serial",
+  "provider_url": "https://tyeth.github.io/digital-dial-gauge-web-serial/",
+  "title": "Digital Dial Gauge Web Serial Test",
+  "author_name": "tyeth",
+  "author_url": "https://github.com/tyeth",
+  "html": "<iframe src=\"https://tyeth.github.io/digital-dial-gauge-web-serial/index.html\" width=\"800\" height=\"600\" allow=\"serial; usb\" frameborder=\"0\"></iframe>",
+  "width": 800,
+  "height": 600,
+  "thumbnail_url": "https://tyeth.github.io/digital-dial-gauge-web-serial/thumbnail.png"
+}

@@ -1,0 +1,200 @@
+[14:21:56] [RAW] "-"
+[14:21:56] [WARN] Could not parse value from: "-"
+[14:21:56] [BIN] [9 bytes] 00 30 30 39 38 39 31 0d 12
+[14:21:56] [RAW] "\u0000009891\r\u0012"
+[14:21:56] [WARN] Could not parse value from: "\u0000009891\r\u0012"
+[14:21:56] [BIN] [1 bytes] 2d
+[14:21:56] [RAW] "-"
+[14:21:56] [WARN] Could not parse value from: "-"
+[14:21:56] [BIN] [9 bytes] 00 30 30 39 38 39 31 0d 12
+[14:21:56] [RAW] "\u0000009891\r\u0012"
+[14:21:56] [WARN] Could not parse value from: "\u0000009891\r\u0012"
+[14:21:56] [BIN] [1 bytes] 2d
+[14:21:56] [RAW] "-"
+[14:21:56] [WARN] Could not parse value from: "-"
+[14:21:56] [BIN] [9 bytes] 00 30 30 39 38 39 31 0d 12
+[14:21:56] [RAW] "\u0000009891\r\u0012"
+[14:21:56] [WARN] Could not parse value from: "\u0000009891\r\u0012"
+[14:21:56] [BIN] [1 bytes] 2d
+[14:21:56] [RAW] "-"
+[14:21:56] [WARN] Could not parse value from: "-"
+[14:21:56] [BIN] [9 bytes] 00 30 30 39 38 39 31 0d 12
+[14:21:56] [RAW] "\u0000009891\r\u0012"
+[14:21:56] [WARN] Could not parse value from: "\u0000009891\r\u0012"
+[14:21:56] [BIN] [1 bytes] 2d
+[14:21:56] [RAW] "-"
+[14:21:56] [WARN] Could not parse value from: "-"
+[14:21:56] [BIN] [9 bytes] 00 30 30 39 38 39 31 0d 12
+[14:21:56] [RAW] "\u0000009891\r\u0012"
+[14:21:56] [WARN] Could not parse value from: "\u0000009891\r\u0012"
+[14:21:57] [BIN] [10 bytes] 2d 00 30 30 39 38 39 31 0d 12
+[14:21:57] [RAW] "-\u0000009891\r\u0012"
+[14:21:57] [WARN] Could not parse value from: "-\u0000009891\r\u0012"
+[14:21:57] [BIN] [1 bytes] 2d
+[14:21:57] [RAW] "-"
+[14:21:57] [WARN] Could not parse value from: "-"
+[14:21:57] [BIN] [9 bytes] 00 30 30 39 38 39 31 0d 12
+[14:21:57] [RAW] "\u0000009891\r\u0012"
+[14:21:57] [WARN] Could not parse value from: "\u0000009891\r\u0012"
+[14:21:57] [BIN] [1 bytes] 2d
+[14:21:57] [RAW] "-"
+[14:21:57] [WARN] Could not parse value from: "-"
+[14:21:57] [BIN] [9 bytes] 00 30 30 39 38 39 31 0d 12
+[14:21:57] [RAW] "\u0000009891\r\u0012"
+[14:21:57] [WARN] Could not parse value from: "\u0000009891\r\u0012"
+[14:21:57] [BIN] [1 bytes] 2d
+[14:21:57] [RAW] "-"
+[14:21:57] [WARN] Could not parse value from: "-"
+[14:21:57] [BIN] [9 bytes] 00 30 30 39 38 39 31 0d 12
+[14:21:57] [RAW] "\u0000009891\r\u0012"
+[14:21:57] [WARN] Could not parse value from: "\u0000009891\r\u0012"
+[14:21:57] [BIN] [1 bytes] 2d
+[14:21:57] [RAW] "-"
+[14:21:57] [WARN] Could not parse value from: "-"
+[14:21:57] [BIN] [9 bytes] 00 30 30 39 38 39 31 0d 12
+[14:21:57] [RAW] "\u0000009891\r\u0012"
+[14:21:57] [WARN] Could not parse value from: "\u0000009891\r\u0012"
+[14:21:57] [BIN] [10 bytes] 2d 00 30 30 39 38 39 31 0d 12
+[14:21:57] [RAW] "-\u0000009891\r\u0012"
+[14:21:57] [WARN] Could not parse value from: "-\u0000009891\r\u0012"
+[14:21:57] [BIN] [1 bytes] 2d
+[14:21:57] [RAW] "-"
+[14:21:57] [WARN] Could not parse value from: "-"
+[14:21:57] [BIN] [9 bytes] 00 30 30 39 38 39 31 0d 12
+[14:21:57] [RAW] "\u0000009891\r\u0012"
+[14:21:57] [WARN] Could not parse value from: "\u0000009891\r\u0012"
+[14:21:57] [BIN] [1 bytes] 2d
+[14:21:57] [RAW] "-"
+[14:21:57] [WARN] Could not parse value from: "-"
+[14:21:57] [BIN] [9 bytes] 00 30 30 39 38 39 31 0d 12
+[14:21:57] [RAW] "\u0000009891\r\u0012"
+[14:21:57] [WARN] Could not parse value from: "\u0000009891\r\u0012"
+[14:21:57] [BIN] [1 bytes] 2d
+[14:21:57] [RAW] "-"
+[14:21:57] [WARN] Could not parse value from: "-"
+[14:21:57] [BIN] [9 bytes] 00 30 30 39 38 39 31 0d 12
+[14:21:57] [RAW] "\u0000009891\r\u0012"
+[14:21:57] [WARN] Could not parse value from: "\u0000009891\r\u0012"
+[14:21:57] [BIN] [10 bytes] 2d 00 30 30 39 38 39 31 0d 12
+[14:21:57] [RAW] "-\u0000009891\r\u0012"
+[14:21:57] [WARN] Could not parse value from: "-\u0000009891\r\u0012"
+[14:21:58] [BIN] [10 bytes] 2d 00 30 30 39 38 39 31 0d 12
+[14:21:58] [RAW] "-\u0000009891\r\u0012"
+[14:21:58] [WARN] Could not parse value from: "-\u0000009891\r\u0012"
+[14:21:58] [BIN] [1 bytes] 2d
+[14:21:58] [RAW] "-"
+[14:21:58] [WARN] Could not parse value from: "-"
+[14:21:58] [BIN] [9 bytes] 00 30 30 39 38 39 31 0d 12
+[14:21:58] [RAW] "\u0000009891\r\u0012"
+[14:21:58] [WARN] Could not parse value from: "\u0000009891\r\u0012"
+[14:21:58] [BIN] [1 bytes] 2d
+[14:21:58] [RAW] "-"
+[14:21:58] [WARN] Could not parse value from: "-"
+[14:21:58] [BIN] [9 bytes] 00 30 30 39 38 39 31 0d 12
+[14:21:58] [RAW] "\u0000009891\r\u0012"
+[14:21:58] [WARN] Could not parse value from: "\u0000009891\r\u0012"
+[14:21:58] [BIN] [1 bytes] 2d
+[14:21:58] [RAW] "-"
+[14:21:58] [WARN] Could not parse value from: "-"
+[14:21:58] [BIN] [9 bytes] 00 30 30 39 38 39 31 0d 12
+[14:21:58] [RAW] "\u0000009891\r\u0012"
+[14:21:58] [WARN] Could not parse value from: "\u0000009891\r\u0012"
+[14:21:58] [BIN] [10 bytes] 2d 00 30 30 39 38 39 31 0d 12
+[14:21:58] [RAW] "-\u0000009891\r\u0012"
+[14:21:58] [WARN] Could not parse value from: "-\u0000009891\r\u0012"
+[14:21:58] [BIN] [1 bytes] 2d
+[14:21:58] [RAW] "-"
+[14:21:58] [WARN] Could not parse value from: "-"
+[14:21:58] [BIN] [9 bytes] 00 30 30 39 38 39 31 0d 12
+[14:21:58] [RAW] "\u0000009891\r\u0012"
+[14:21:58] [WARN] Could not parse value from: "\u0000009891\r\u0012"
+[14:21:58] [BIN] [1 bytes] 2d
+[14:21:58] [RAW] "-"
+[14:21:58] [WARN] Could not parse value from: "-"
+[14:21:58] [BIN] [9 bytes] 00 30 30 39 38 39 31 0d 12
+[14:21:58] [RAW] "\u0000009891\r\u0012"
+[14:21:58] [WARN] Could not parse value from: "\u0000009891\r\u0012"
+[14:21:58] [BIN] [1 bytes] 2d
+[14:21:58] [RAW] "-"
+[14:21:58] [WARN] Could not parse value from: "-"
+[14:21:58] [BIN] [9 bytes] 00 30 30 39 38 39 31 0d 12
+[14:21:58] [RAW] "\u0000009891\r\u0012"
+[14:21:58] [WARN] Could not parse value from: "\u0000009891\r\u0012"
+[14:21:58] [BIN] [10 bytes] 2d 00 30 30 39 38 39 31 0d 12
+[14:21:58] [RAW] "-\u0000009891\r\u0012"
+[14:21:58] [WARN] Could not parse value from: "-\u0000009891\r\u0012"
+[14:21:58] [BIN] [1 bytes] 2d
+[14:21:58] [RAW] "-"
+[14:21:58] [WARN] Could not parse value from: "-"
+[14:21:58] [BIN] [9 bytes] 00 30 30 39 38 39 31 0d 12
+[14:21:58] [RAW] "\u0000009891\r\u0012"
+[14:21:58] [WARN] Could not parse value from: "\u0000009891\r\u0012"
+[14:21:59] [BIN] [1 bytes] 2d
+[14:21:59] [RAW] "-"
+[14:21:59] [WARN] Could not parse value from: "-"
+[14:21:59] [BIN] [9 bytes] 00 30 30 39 38 39 31 0d 12
+[14:21:59] [RAW] "\u0000009891\r\u0012"
+[14:21:59] [WARN] Could not parse value from: "\u0000009891\r\u0012"
+[14:21:59] [BIN] [1 bytes] 2d
+[14:21:59] [RAW] "-"
+[14:21:59] [WARN] Could not parse value from: "-"
+[14:21:59] [BIN] [9 bytes] 00 30 30 39 38 39 31 0d 12
+[14:21:59] [RAW] "\u0000009891\r\u0012"
+[14:21:59] [WARN] Could not parse value from: "\u0000009891\r\u0012"
+[14:21:59] [BIN] [1 bytes] 2d
+[14:21:59] [RAW] "-"
+[14:21:59] [WARN] Could not parse value from: "-"
+[14:21:59] [BIN] [9 bytes] 00 30 30 39 38 39 31 0d 12
+[14:21:59] [RAW] "\u0000009891\r\u0012"
+[14:21:59] [WARN] Could not parse value from: "\u0000009891\r\u0012"
+[14:21:59] [BIN] [1 bytes] 2d
+[14:21:59] [RAW] "-"
+[14:21:59] [WARN] Could not parse value from: "-"
+[14:21:59] [BIN] [9 bytes] 00 30 30 39 38 39 31 0d 12
+[14:21:59] [RAW] "\u0000009891\r\u0012"
+[14:21:59] [WARN] Could not parse value from: "\u0000009891\r\u0012"
+[14:21:59] [BIN] [1 bytes] 2d
+[14:21:59] [RAW] "-"
+[14:21:59] [WARN] Could not parse value from: "-"
+[14:21:59] [BIN] [9 bytes] 00 30 30 39 38 39 31 0d 12
+[14:21:59] [RAW] "\u0000009891\r\u0012"
+[14:21:59] [WARN] Could not parse value from: "\u0000009891\r\u0012"
+[14:21:59] [BIN] [10 bytes] 2d 00 30 30 39 38 39 31 0d 12
+[14:21:59] [RAW] "-\u0000009891\r\u0012"
+[14:21:59] [WARN] Could not parse value from: "-\u0000009891\r\u0012"
+[14:21:59] [BIN] [1 bytes] 2d
+[14:21:59] [RAW] "-"
+[14:21:59] [WARN] Could not parse value from: "-"
+[14:21:59] [BIN] [9 bytes] 00 30 30 39 38 39 31 0d 12
+[14:21:59] [RAW] "\u0000009891\r\u0012"
+[14:21:59] [WARN] Could not parse value from: "\u0000009891\r\u0012"
+[14:21:59] [BIN] [6 bytes] 2d 00 30 30 39 38
+[14:21:59] [RAW] "-\u00000098"
+[14:21:59] [WARN] Could not parse value from: "-\u00000098"
+[14:21:59] [BIN] [4 bytes] 39 31 0d 12
+[14:21:59] [RAW] "91\r\u0012"
+[14:21:59] [WARN] Could not parse value from: "91\r\u0012"
+[14:21:59] [BIN] [1 bytes] 2d
+[14:21:59] [RAW] "-"
+[14:21:59] [WARN] Could not parse value from: "-"
+[14:21:59] [BIN] [9 bytes] 00 30 30 39 38 39 31 0d 12
+[14:21:59] [RAW] "\u0000009891\r\u0012"
+[14:21:59] [WARN] Could not parse value from: "\u0000009891\r\u0012"
+[14:22:00] [BIN] [1 bytes] 2d
+[14:22:00] [RAW] "-"
+[14:22:00] [WARN] Could not parse value from: "-"
+[14:22:00] [BIN] [9 bytes] 00 30 30 39 38 39 31 0d 12
+[14:22:00] [RAW] "\u0000009891\r\u0012"
+[14:22:00] [WARN] Could not parse value from: "\u0000009891\r\u0012"
+[14:22:00] [BIN] [1 bytes] 2d
+[14:22:00] [RAW] "-"
+[14:22:00] [WARN] Could not parse value from: "-"
+[14:22:00] [BIN] [9 bytes] 00 30 30 39 38 39 31 0d 12
+[14:22:00] [RAW] "\u0000009891\r\u0012"
+[14:22:00] [WARN] Could not parse value from: "\u0000009891\r\u0012"
+[14:22:00] [BIN] [10 bytes] 2d 00 30 30 39 38 39 31 0d 12
+[14:22:00] [RAW] "-\u0000009891\r\u0012"
+[14:22:00] [WARN] Could not parse value from: "-\u0000009891\r\u0012"
+[14:22:00] [ERROR] Read error: NetworkError: The device has been lost.
+[14:22:00] [EXCEPTION] NetworkError: The device has been lost.
+[14:22:00] [STATUS] Disconnected

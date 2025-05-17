@@ -9,9 +9,9 @@ Computer running Chrome-based browser (required for Web Serial API support)
 
 Technical Details Discovered
 
-Communication Protocol: Serial connection at 19200 baud, 8 data bits, no parity, 1 stop bit (8N1)
+Communication Protocol: Serial connection at 9600 baud, 8 data bits, no parity, 1 stop bit (8N1)
 Reference Project: Hackaday project (https://hackaday.io/project/511-digital-dial-indicator-cnc-surface-probe)
-Data Format: The digital gauge outputs a custom protocol at 1.3V levels, structured in 6 nibbles (24 bits)
+Data Format: The digital gauge outputs a custom protocol at 1.3V levels, structured in 6 nibbles (24 bits) we have converted via custom cable to rs232 with then rs232->usb adapter.
 Signal Chain: The gauge's data and clock signals are processed by a microcontroller or the RS232 adapter to convert to standard serial output
 
 Solution Developed
@@ -49,6 +49,7 @@ The Web Serial API is used to communicate with serial devices:
 - Data is sent and received as Uint8Array or similar binary formats
 - Serial connections should be properly opened and closed
 - Error handling is important for device disconnections
+- if you try to read /dev/ttyUSB0 then it should be constantly returning the equivalent of -9.891mm
 
 ## Best Practices
 

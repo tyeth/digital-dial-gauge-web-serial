@@ -3,7 +3,7 @@
 This project provides scripts for reading and parsing digital dial gauge data from a serial port, in both Python and Node.js. It is useful for logging, automation, and integration with other tools.
 
 There is also a web-serial version (no installation - only a Chrome based browser needed):
-### [https://github.com/tyeth/digital-dial-guage-web-serial/](https://github.com/tyeth/digital-dial-guage-web-serial/)
+### [https://tyeth.github.io/digital-dial-gauge-web-serial/](https://tyeth.github.io/digital-dial-gauge-web-serial/)
 
 ## Features
 - Reads data from a digital dial gauge via serial port
